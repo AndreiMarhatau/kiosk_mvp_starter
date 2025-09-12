@@ -1,0 +1,288 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Админ-панель киоска</title>
+  <link rel="stylesheet" href="/static/css/admin.css" />
+  <link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet" />
+</head>
+<div id="toasts" class="toasts"></div>
+
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">Админ-панель</div>
+    <nav id="sideNav" class="nav">
+      <a href="#/dashboard" class="nav-item"><span class="dot"></span>Главная</a>
+      <a href="#/pages"    class="nav-item"><span class="dot"></span>Страницы</a>
+      <a href="#/buttons"  class="nav-item"><span class="dot"></span>Кнопки</a>
+      <a href="#/theme"    class="nav-item"><span class="dot"></span>Стили</a>
+      
+    </nav>
+    <div class="spacer"></div>
+    <a href="/logout" class="logout">Выйти</a>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <header>
+      <h1 id="viewTitle">Админ-панель</h1>
+      <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme"></button>
+    </header>
+
+    <section id="view">
+      <!-- Dashboard -->
+      <section id="section-dashboard" data-route="dashboard" hidden>
+        <div class="panel">
+          <h2>Сводка</h2>
+          <p>Добро пожаловать! Выберите раздел слева.</p>
+        </div>
+
+        <section class="panel" style="margin-top:14px;">
+          <h2>Организация и логотип</h2>
+          <div class="row">
+            <label class="field" style="min-width:260px;">
+              <span>Название организации</span>
+              <input id="orgName" placeholder="Моя организация" />
+            </label>
+          </div>
+
+          <div class="row" style="align-items:center;">
+            <div>
+              <div class="muted small">Логотип (png/jpg/webp/svg)</div>
+              <div class="u-row">
+                <input id="logoFile" type="file" accept=".png,.jpg,.jpeg,.webp,.svg" style="display:none;" />
+                <button id="logoPick" class="u-btn ghost" type="button">Выбрать файл…</button>
+                <button id="logoUpload" class="u-btn" type="button">Загрузить</button>
+              </div>
+            </div>
+            <div style="margin-left:16px;">
+              <img id="logoImg" alt="Логотип" style="height:48px; border-radius:10px; display:block;" hidden />
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:12px; display:none;">
+            <label class="field" style="min-width:320px;">
+              <span>Пароль выхода из полноэкранного режима (киоск)</span>
+              
+            </label>
+          </div>
+
+          <div class="footer" style="margin-top:12px;">
+            <button id="orgSave" class="btn primary">Сохранить</button>
+          </div>
+        </section>
+
+        <section class="panel" style="margin-top:14px;">
+          <h2>Киоск — защита выхода</h2>
+          <p class="muted small">Пароль требуется для выхода из полноэкранного режима на киоске.</p>
+          <div id="kioskPwdStatus" class="muted" style="margin-bottom:8px;">Статус: неизвестно</div>
+          <div class="form-grid">
+            <label class="field">
+              <span>Новый пароль</span>
+              <input id="kioskPwd1" type="password" placeholder="Введите пароль">
+            </label>
+            <label class="field">
+              <span>Подтверждение</span>
+              <input id="kioskPwd2" type="password" placeholder="Повторите пароль">
+            </label>
+          </div>
+          <div class="footer" style="margin-top:12px; display:flex; gap:8px;">
+            <button id="kioskPwdSave" class="btn primary">Установить</button>
+            <button id="kioskPwdClear" class="btn danger">Сбросить</button>
+          </div>
+        </section>
+
+      </section>
+
+      <!-- Pages -->
+      <section id="section-pages" data-route="pages" hidden>
+        <section class="panel">
+          <div class="row" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Страницы</h2>
+            <button id="openPageModal" class="primary">Новая страница</button>
+          </div>
+
+          <div id="pagesList" class="list cards" style="margin-top:10px;"></div>
+          <p class="muted small">Выберите страницу, чтобы редактировать её содержимое ниже.</p>
+        </section>
+
+        <!-- Модалка создания/редактирования страницы -->
+        <div id="pageModal" class="modal" aria-hidden="true">
+          <div class="card">
+            <div class="header">
+              <h3 id="pageModalTitle" style="margin:0;">Новая страница</h3>
+              <button class="btn ghost" id="pageClose">Закрыть</button>
+            </div>
+
+            <div class="form-grid">\n              <!-- slug скрыт: генерируется автоматически -->\n<label class="field">
+                <span>Заголовок</span>
+                <input id="pageTitle" placeholder="О компании">
+              </label>
+              <label class="field">
+                <span><input type="checkbox" id="pageIsHome"> Сделать главной</span>
+              </label>
+            </div>
+
+            <div class="footer">
+              <button class="btn ghost" id="pageCancel">Отмена</button>
+              <button class="btn primary" id="pageSave">Сохранить</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Блоки выбранной страницы -->
+        <section class="panel">
+          <div class="row" style="justify-content:space-between; align-items:center;">
+            <h3 id="currentPageTitle" style="margin:0;">Содержимое</h3>
+            <button id="openBlockModal" class="primary">Добавить блок</button>
+          </div>
+
+          <div id="pageInfo" class="muted" style="margin:6px 0 10px;"></div>
+
+          <div id="blocks" class="block-list"></div>
+        </section>
+
+        <!-- Единая модалка блока (создание/редактирование) -->
+        <div id="blockModal" class="modal" aria-hidden="true">
+          <div class="card">
+            <div class="header">
+              <h3 id="blockModalTitle" style="margin:0;">Новый блок</h3>
+              <button class="btn ghost" id="blockClose">Закрыть</button>
+            </div>
+
+            <div class="form-grid">
+              <!-- выбор типа -->
+              <div class="field">
+                <span>Тип блока</span>
+                <div class="row" id="blockKindChips" style="gap:8px; flex-wrap:wrap;">
+                  <label class="chip"><input type="radio" name="blockKind" value="text" checked> Текст</label>
+                  <label class="chip"><input type="radio" name="blockKind" value="image"> Изображение</label>
+                  <label class="chip"><input type="radio" name="blockKind" value="video"> Видео</label>
+                  <label class="chip"><input type="radio" name="blockKind" value="pdf"> PDF</label>
+                </div>
+              </div>
+
+              <!-- редактор текста -->
+              <div class="field" id="blockTextWrap">
+                <span>Содержимое</span>
+                <div id="blockQuill"></div>
+              </div>
+
+              <!-- медиа: загрузка / URL -->
+              <div class="field" id="blockMediaWrap" style="display:none;">
+                <span>Файл или URL</span>
+                <div class="u-row">
+                  <input id="blockFile" type="file" accept=".png,.jpg,.jpeg,.webp,.mp4,.pdf">
+                  <button id="blockPick" class="u-btn ghost" type="button">Выбрать файл…</button>
+                  <button id="blockUpload" class="u-btn" type="button">Загрузить</button>
+                  <span id="blockUploadedPath" class="muted small"></span>
+                </div>
+                <div class="u-row">
+                  <input id="blockUrl" class="u-input flex1" placeholder="или вставьте URL (https://...)" />
+                </div>
+                <div class="muted small">При сохранении будет использован либо загруженный путь, либо URL (если указан).</div>
+              </div>
+            </div>
+
+            <div class="footer">
+              <button class="btn ghost" id="blockCancel">Отмена</button>
+              <button class="btn primary" id="blockSave">Сохранить</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Buttons -->
+      <section id="section-buttons" data-route="buttons" hidden>
+        <section class="panel">
+          <div class="row" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Кнопки</h2>
+            <div class="row" style="gap:8px;">
+              <button id="createGroupBtn" class="btn">Создать группу</button>
+              <button id="openBtnModal" class="primary">Новая кнопка</button>
+            </div>
+          </div>
+
+          <div id="groupsList" class="list cards" style="margin-top:10px;"></div>
+          <p class="muted small">Группы отображаются как отдельные элементы. Кнопки без группы показаны ниже.</p>
+
+          <!-- сюда JS рисует список кнопок -->
+          <div id="buttons" class="button-list" style="margin-top:12px;"></div>
+
+          <!-- пустое состояние -->
+          <div id="buttonsEmpty" class="empty muted" style="display:none; margin-top:12px;">
+            Кнопок пока нет. Нажмите «Новая кнопка».
+          </div>
+        </section>
+
+        <!-- модалка создания/редактирования кнопки -->
+        <div id="btnModal" class="modal" aria-hidden="true">
+          <div class="card">
+            <div class="header">
+              <h3 id="btnModalTitle" style="margin:0;">Новая кнопка</h3>
+              <button class="btn ghost" id="btnClose">Закрыть</button>
+            </div>
+
+            <div class="form-grid">
+              <label class="field">
+                <span>Название</span>
+                <input id="btnTitle" placeholder="Например: О компании">
+              </label>
+
+              <label class="field">
+                <span>Страница (куда вести)</span>
+                <select id="btnTarget"></select>
+              </label>
+
+              <div class="field">
+                <span>Цвет (палитра)</span>
+                <div id="btnPalette" class="palette"></div>
+                <div class="row" style="gap:8px; margin-top:8px;">
+                  <label class="chip"><input type="radio" name="fg" value="light" checked> Светлый текст</label>
+                  <label class="chip"><input type="radio" name="fg" value="dark"> Тёмный текст</label>
+                </div>
+              </div>
+
+              <label class="field">
+                <span>Группа (опционально)</span>
+                <select id="btnGroup"></select>
+              </label>
+
+              <div class="field adv-colors">
+                <span>Точные цвета (необязательно)</span>
+                <div class="row" style="gap:12px;">
+                  <label>Фон <input id="btnBg" type="color" value="#2563eb"></label>
+                  <label>Текст <input id="btnFg" type="color" value="#ffffff"></label>
+                </div>
+              </div>
+
+        
+            </div>
+
+            <div class="footer">
+              <button class="btn ghost" id="btnCancel">Отмена</button>
+              <button class="btn primary" id="btnSave">Сохранить</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Theme -->
+      <section id="section-theme" data-route="theme" hidden>
+        <section class="panel">
+          <h2>Стили</h2>
+          <p>Здесь появится настройка цветов и логотипа.</p>
+        </section>
+      </section>
+
+      
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+  <script src="/static/js/admin.js"></script>
+</body>
+</html>
+

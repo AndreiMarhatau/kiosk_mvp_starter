@@ -1,0 +1,148 @@
+:root{
+  --primary: #5b7fff;
+  --primary-600: #4b6bff;
+  --primary-700: #3c59ff;
+
+  --bg: #0f172a;           /* по умолчанию тёмная */
+  --surface: #111827;
+  --surface-2: #0b1221;
+
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --border: rgba(255,255,255,.10);
+  --shadow: 0 14px 40px rgba(0,0,0,.45);
+
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --focus: 0 0 0 3px rgba(91, 127, 255, .35);
+}
+
+/* Светлая тема будет включаться классом body.light ИЛИ data-theme="light" */
+:root[data-theme="light"],
+body.light{
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --surface-2: #f7f8fc;
+
+  --text: #0f172a;
+  --muted: #6b7280;
+  --border: rgba(2,6,23,.10);
+  --shadow: 0 12px 36px rgba(15,23,42,.10);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body{
+  margin:0;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1100px 700px at 120% -10%, rgba(91,127,255,.10), transparent 50%) no-repeat,
+    radial-gradient(900px 600px at -20% 110%, rgba(91,127,255,.10), transparent 45%) no-repeat,
+    var(--bg);
+}
+
+/* Layout */
+.auth{
+  min-height: 100dvh;
+  display:flex; align-items:center; justify-content:center;
+  padding: 24px;
+}
+.card{
+  width: min(440px, 92vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+/* Header */
+.card-header{
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom: 12px;
+}
+.brand{ display:flex; align-items:center; gap:12px; }
+.logo{
+  width:42px; height:42px; border-radius:12px;
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-weight:800; font-size:20px;
+  background: linear-gradient(180deg, var(--primary-600), var(--primary-700));
+  box-shadow: 0 8px 18px rgba(91,127,255,.28);
+}
+.title .h1{ font-weight:800; font-size:20px; }
+.muted{ color: var(--muted); }
+
+/* Toggle */
+.theme-toggle{
+  width:46px; height:28px; border-radius:999px; border:1px solid var(--border);
+  background: linear-gradient(180deg, #111827, #0b1221);
+  position:relative; cursor:pointer; box-shadow: var(--shadow);
+}
+.theme-toggle::after{
+  content:""; position:absolute; top:3px; left:3px;
+  width:22px; height:22px; border-radius:50%;
+  background: radial-gradient(circle at 30% 30%, #c8d2ff, #8fa2ff 60%, #6a84ff);
+  transition: transform .18s ease;
+  box-shadow: 0 4px 10px rgba(0,0,0,.25);
+}
+:root[data-theme="light"] .theme-toggle,
+body.light .theme-toggle{
+  background: linear-gradient(180deg, #fff, #f4f6fb);
+}
+:root[data-theme="light"] .theme-toggle::after,
+body.light .theme-toggle::after{
+  background: radial-gradient(circle at 30% 30%, #ffd36b, #ffb703 60%, #ff9e00);
+  transform: translateX(18px);
+}
+
+/* Alerts */
+.alert{
+  border:1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+}
+.alert.error{
+  border-color: rgba(239, 68, 68, .35);
+}
+
+/* Form */
+.form{ display:flex; flex-direction:column; gap: 12px; margin-top: 6px; }
+.field{ display:flex; flex-direction:column; gap:6px; }
+.field > span{ font-size: 13px; color: var(--muted); }
+
+input{
+  width:100%;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #1f2937; /* тёмный дефолт */
+  color: #f3f4f6;
+  outline: none;
+  transition: box-shadow .12s ease, border-color .12s ease, background .12s ease;
+}
+input::placeholder{ color: #9ca3af; }
+:root[data-theme="light"] input,
+body.light input{
+  background: #ffffff; color: #0f172a;
+}
+input:focus{
+  border-color: var(--primary);
+  box-shadow: var(--focus);
+}
+
+button.primary{
+  background: linear-gradient(180deg, var(--primary-600), var(--primary-700));
+  color:#fff; border:0; border-radius: 12px;
+  padding: 12px 14px; cursor:pointer; font-weight: 700;
+  box-shadow: 0 8px 18px rgba(91,127,255,.28);
+  transition: transform .08s ease, filter .12s ease, box-shadow .15s ease;
+}
+button.primary:hover{ filter: brightness(.98); }
+button.primary:active{ transform: translateY(1px); }
+button.primary:focus-visible{ box-shadow: var(--focus); }
+
+.foot{ margin-top: 12px; font-size: 13px; }
+.link{ color: var(--primary); text-decoration: underline; }
