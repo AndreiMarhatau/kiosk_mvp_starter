@@ -175,6 +175,7 @@ async def auth_login(request: Request, db=Depends(get_db)):
         "access_token", f"Bearer {token}",
         httponly=True, samesite="lax", max_age=60*60*8, path="/", secure=SECURE_COOKIES
     )
+    return resp
 
 
 @app.get("/logout")
