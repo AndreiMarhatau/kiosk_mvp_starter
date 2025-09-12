@@ -543,10 +543,14 @@ function showSection(route){
       if (typeof preloadPages === 'function' && typeof fillTargetSelect === 'function') {
         preloadPages().then(fillTargetSelect);
       }
+      if (typeof preloadGroups === 'function' && typeof fillGroupSelect === 'function') {
+        preloadGroups().then(fillGroupSelect);
+      }
       ROUTE_INITED.buttons = true;
     }
     // каждый вход — перерисовка
     fetchButtons();
+    if (typeof refreshGroupsList === 'function') refreshGroupsList();
   }
 
   if (route === 'dashboard') {
@@ -618,7 +622,7 @@ function initDashboard(){
   logoImg    = document.getElementById('logoImg');
   orgSave    = document.getElementById('orgSave');
 
-  // Weather controls: dropdown + separate save button
+  // Weather controls: city selector + visibility toggle
   try{
     const section = document.getElementById('section-dashboard');
     const orgPanel = section ? section.querySelector('.panel') : null;
@@ -626,75 +630,22 @@ function initDashboard(){
       const grid = document.createElement('div');
       grid.className = 'form-grid';
       grid.style.marginTop = '12px';
-
-      const fldCity = document.createElement('label');
-      fldCity.className = 'field';
-      fldCity.style.maxWidth = '360px';
-      fldCity.innerHTML = '<span>Город (Беларусь)</span>'+
-        '<select id="weatherCitySelect">'
-        + '<option value="">— Выберите город —</option>'
-        + '<option>Минск</option>'
-        + '<option>Брест</option>'
-        + '<option>Витебск</option>'
-        + '<option>Гомель</option>'
-        + '<option>Гродно</option>'
-        + '<option>Могилёв</option>'
-        + '</select>';
-
-      const controls = document.createElement('div');
-      controls.className = 'footer';
-      controls.style.marginTop = '8px';
-      //controls.innerHTML = \u0027<button id="weatherSave" class="btn" type="button">Сохранить</button>\u0027;
-
-      grid.appendChild(fldCity);
-
-      const footer = orgPanel.querySelector('.footer');
-      if (footer && footer.parentElement){
-        footer.parentElement.insertBefore(grid, footer);
-        footer.parentElement.insertBefore(controls, footer);
-      } else {
-        orgPanel.appendChild(grid);
-        orgPanel.appendChild(controls);
-      }
-
-      const citySel = grid.querySelector('#weatherCitySelect');
-      const btnSave = controls.querySelector('#weatherSave');
-      const btnOff  = null;
-
-      if (btnSave){
-        btnSave.addEventListener('click', async ()=>{
-          const city = (citySel?.value || '').trim();
-          if (!city) return alert('Выберите или укажите город');
-          try{
-            await fetch('/admin/settings', {
-              method:'PUT', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-              body: JSON.stringify({ show_weather: true, weather_city: city })
-            });
-            showToast?.({ title:'Сохранено', type:'success' });
-          }catch(_){ alert('Не удалось сохранить погоду'); }
-        });
-      }
-      // disable кнопка убрана — сохраняем только выбранный город
-    }
-  }catch(_){ }
-
-  // Weather controls (inject if absent)
-  try{
-    const section = document.getElementById('section-dashboard');
-    const orgPanel = section ? section.querySelector('.panel') : null;
-      const grid = document.createElement('div');
-      grid.className = 'form-grid';
-      grid.style.marginTop = '12px';
       grid.innerHTML = `
-        <label class="field" style="max-width:320px;">
-          <span>Город (для прогноза)</span>
-          <input id="weatherCity" placeholder="Например: Москва" />
+        <label class="field" style="max-width:360px;">
+          <span>Город (Беларусь)</span>
+          <select id="weatherCitySelect">
+            <option value="">— Выберите город —</option>
+            <option>Минск</option>
+            <option>Брест</option>
+            <option>Витебск</option>
+            <option>Гомель</option>
+            <option>Гродно</option>
+            <option>Могилёв</option>
+          </select>
         </label>
         <label class="field" style="align-items:center; max-width:260px;">
-          <span>Включить погоду</span>
-          <div class="u-row" style="align-items:center; gap:8px;">
-            <span class="muted small">Показывать температуру и значок в шапке</span>
-          </div>
+          <span>Отображать погоду</span>
+          <input type="checkbox" id="weatherShow" />
         </label>`;
       const footer = orgPanel.querySelector('.footer');
       if (footer && footer.parentElement){
@@ -703,8 +654,7 @@ function initDashboard(){
         orgPanel.appendChild(grid);
       }
     }
-  }
-  catch(_){ }
+  }catch(_){ }
 
   if (logoPick && logoFile){ logoPick.onclick = ()=> logoFile.click(); }
   if (logoUpload && logoFile){
@@ -725,7 +675,8 @@ function initDashboard(){
       if (dashboardState.logo_path) payload.logo_path = dashboardState.logo_path;
       // Weather fields
       try{
-        const wc = document.getElementById('weatherCity');
+        const wc = document.getElementById('weatherCitySelect');
+        const sw = document.getElementById('weatherShow');
         if (sw) payload.show_weather = !!sw.checked;
         if (wc) payload.weather_city = (wc.value || '').trim();
       }catch(_){ }
@@ -788,6 +739,7 @@ function initDashboard(){
     }
   }catch(_){ }
 
+}
 
 async function loadDashboard(){
   const cfg = await loadConfig();
@@ -802,17 +754,13 @@ async function loadDashboard(){
   // Weather: fill current values
   try{
     const citySel = document.getElementById('weatherCitySelect');
+    const sw = document.getElementById('weatherShow');
     const city = cfg.weather_city || '';
     if (citySel){
       const found = Array.from(citySel.options).find(o => (o.value||o.text) === city);
       if (found) citySel.value = city;
     }
-  }catch(_){ }
-  // Weather values
-  try{
-    const wc = document.getElementById('weatherCity');
     if (sw) sw.checked = !!cfg.show_weather;
-    if (wc) wc.value = cfg.weather_city || '';
   }catch(_){ }
   try{ const st = document.getElementById('kioskPwdStatus'); if(st) st.textContent = 'Статус: ' + (cfg.exit_password_set ? 'Установлен' : 'Не установлен'); }catch(_){ }
   // Поверх значения из /config берём точный статус из админского эндпоинта (без кэша)
@@ -964,48 +912,6 @@ fetchButtons = async function(){
   }
   enableButtonsDnD();
 };
-
-// Router override fix to ensure sections toggle correctly and dashboard works
-(function(){
-  function fullShowSectionFix(route){
-    document.querySelectorAll('#view > section[data-route]').forEach(s => { s.hidden = true; });
-
-    const sel = (
-      document.querySelector(`#view > section[data-route="${route}"]`) ||
-      document.getElementById(`section-${route}`) ||
-      document.querySelector(`[data-route="${route}"]`)
-    );
-    if (!sel) return;
-    sel.hidden = false;
-    sel.removeAttribute('hidden');
-
-    const titles = { dashboard:'Админ-панель', pages:'Страницы', buttons:'Кнопки', theme:'Стили' };
-    const h = document.getElementById('viewTitle');
-    if (h) h.textContent = titles[route] || 'Админ-панель';
-
-    document.querySelectorAll('#sideNav .nav-item').forEach(a => {
-      a.classList.toggle('active', a.getAttribute('href') === '#/' + route);
-    });
-
-    if (route === 'dashboard'){
-      if (typeof initDashboard === 'function') initDashboard();
-      if (typeof loadDashboard === 'function') loadDashboard();
-    }
-    if (route === 'pages'){
-      if (typeof initPagesUI === 'function') initPagesUI();
-      if (typeof initBlocksUI === 'function') initBlocksUI();
-    }
-    if (route === 'buttons'){
-      if (typeof initButtonsModal === 'function') initButtonsModal();
-      if (typeof preloadPages === 'function' && typeof fillTargetSelect === 'function') {
-        preloadPages().then(fillTargetSelect);
-      }
-      if (typeof fetchButtons === 'function') fetchButtons();
-    }
-  }
-  window.showSection = fullShowSectionFix;
-  try { fullShowSectionFix((window.location.hash || '#/dashboard').replace(/^#\//,'')); } catch(_){}
-})();
 
 // показываем тосты в существующих действиях
 const _origCreateButton = createButton;
@@ -1463,16 +1369,6 @@ right.appendChild(del);
   });
 }
 
-// интеграция с роутером
-const _origShowSectionPages = showSection;
-showSection = function(route){
-  _origShowSectionPages(route);
-  if(route === 'pages'){
-    initQuill();
-    initPagesUI();
-    initBlocksUI();
-  }
-};
 
 // ========================= Block Modal (Create/Edit) =========================
 let blockModal, blockModalTitle, blockClose, blockCancel, blockSave;
@@ -1629,21 +1525,6 @@ async function saveBlockModal(){
   }
 }
 
-const _origShowSection = showSection;
-showSection = function(route){
-  _origShowSection(route);
-  if (route === 'buttons'){
-    initButtonsModal();
-    preloadPages().then(fillTargetSelect);
-    preloadGroups().then(fillGroupSelect);
-    fetchButtons();
-    refreshGroupsList();
-  }
-  if (route === 'pages'){
-    initPagesUI();
-    initBlocksUI();
-  }
-};
 
 
 
