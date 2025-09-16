@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import importlib.util
 import os
 import sys
 import threading
 import time
+from types import ModuleType
 from typing import Iterable
 
 
@@ -27,6 +30,49 @@ def _ensure_sys_path(paths: Iterable[str]) -> None:
             sys.path.insert(0, path)
 
 
+def _load_backend_app() -> object:
+    """Import the FastAPI application regardless of packaging quirks."""
+
+    module_name = "backend.app.main"
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError:
+        backend_main = _resource_path("backend", "app", "main.py")
+        if not os.path.isfile(backend_main):
+            raise
+
+        # Ensure parent namespace packages exist to support relative imports.
+        parent_name = module_name.rpartition(".")[0]
+        package_parts = parent_name.split(".")
+        package_root = _resource_path()
+        accumulated: list[str] = []
+        for index, part in enumerate(package_parts):
+            accumulated.append(part)
+            full_name = ".".join(accumulated)
+            expected_path = os.path.join(package_root, *package_parts[: index + 1])
+            existing = sys.modules.get(full_name)
+            if existing is not None:
+                module_paths = getattr(existing, "__path__", [])
+                if isinstance(module_paths, (list, tuple)) and expected_path in module_paths:
+                    continue
+            package = ModuleType(full_name)
+            package.__path__ = [expected_path]
+            package.__package__ = full_name
+            sys.modules[full_name] = package
+
+        spec = importlib.util.spec_from_file_location(module_name, backend_main)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Unable to load backend application module")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+    app = getattr(module, "app", None)
+    if app is None:
+        raise RuntimeError("Backend module does not expose 'app'")
+    return app
+
+
 class BackendServer:
     """Helper that runs uvicorn in a background thread."""
 
@@ -42,9 +88,10 @@ class BackendServer:
         self.host = host
         self.port = port
         self._startup_timeout = startup_timeout
+        app = _load_backend_app()
         self._server = uvicorn.Server(
             uvicorn.Config(
-                "backend.app.main:app",
+                app,
                 host=host,
                 port=port,
                 log_level=log_level,
@@ -62,9 +109,17 @@ class BackendServer:
         self._thread.start()
         deadline = time.monotonic() + self._startup_timeout
         while time.monotonic() < deadline:
-            started_event = getattr(self._server, "started", None)
-            if started_event is not None and started_event.is_set():
-                return
+            started_attr = getattr(self._server, "started", None)
+            if isinstance(started_attr, bool):
+                if started_attr:
+                    return
+            elif started_attr is not None and hasattr(started_attr, "is_set"):
+                if started_attr.is_set():
+                    return
+            else:
+                alt_event = getattr(self._server, "started_event", None)
+                if alt_event is not None and hasattr(alt_event, "is_set") and alt_event.is_set():
+                    return
             if not self._thread.is_alive():
                 raise RuntimeError("Backend server thread exited before start-up completed")
             time.sleep(0.1)
