@@ -62,7 +62,8 @@ class BackendServer:
         self._thread.start()
         deadline = time.monotonic() + self._startup_timeout
         while time.monotonic() < deadline:
-            if self._server.started:
+            started_event = getattr(self._server, "started", None)
+            if started_event is not None and started_event.is_set():
                 return
             if not self._thread.is_alive():
                 raise RuntimeError("Backend server thread exited before start-up completed")
