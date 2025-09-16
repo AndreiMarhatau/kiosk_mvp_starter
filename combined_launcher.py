@@ -37,9 +37,24 @@ def _load_backend_app() -> object:
     try:
         module = importlib.import_module(module_name)
     except ModuleNotFoundError:
-        backend_main = _resource_path("backend", "app", "main.py")
-        if not os.path.isfile(backend_main):
-            raise
+        backend_dir = _resource_path("backend", "app")
+        candidate_files: list[str] = []
+        if os.path.isdir(backend_dir):
+            static_candidates = ["main.py", "main.pyc"]
+            candidate_files.extend(
+                os.path.join(backend_dir, name)
+                for name in static_candidates
+            )
+            for entry in os.listdir(backend_dir):
+                if entry.startswith("main.") and entry.endswith(('.py', '.pyc')):
+                    candidate_files.append(os.path.join(backend_dir, entry))
+
+        backend_main = next((path for path in candidate_files if os.path.isfile(path)), None)
+        if backend_main is None:
+            searched = ", ".join(candidate_files) or backend_dir
+            raise ModuleNotFoundError(
+                f"Unable to resolve backend.app.main in bundled files (searched: {searched})"
+            )
 
         # Ensure parent namespace packages exist to support relative imports.
         parent_name = module_name.rpartition(".")[0]
