@@ -7,7 +7,7 @@ VENV_PATH="${APP_DIR}/.venv"
 
 if [ ! -d "${VENV_PATH}" ]; then
   echo "[kiosk_app] Virtual environment not found. Installing requirements..."
-  "${ROOT_DIR}/scripts/install_requirements.sh"
+  "${ROOT_DIR}/scripts/install_requirements.sh" --kiosk
 fi
 
 # shellcheck disable=SC1090

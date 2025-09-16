@@ -4,6 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
+usage() {
+  cat <<'EOF'
+Usage: install_requirements.sh [--backend] [--kiosk]
+
+Without arguments the script installs the environments for both apps.
+Use the flags to limit the installation to a specific app when booting them independently.
+EOF
+}
+
 setup_env() {
   local app_name="$1"
   local requirements_file="$2"
@@ -25,7 +34,46 @@ setup_env() {
   deactivate
 }
 
-setup_env "kiosk_app" "${ROOT_DIR}/kiosk_app/requirements.txt" "${ROOT_DIR}/kiosk_app/.venv"
-setup_env "backend" "${ROOT_DIR}/backend/requirements.txt" "${ROOT_DIR}/backend/.venv"
+declare -a targets=()
+
+while (($#)); do
+  case "$1" in
+    --backend)
+      targets+=("backend")
+      ;;
+    --kiosk|--kiosk-app)
+      targets+=("kiosk_app")
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+if [ ${#targets[@]} -eq 0 ]; then
+  targets=("kiosk_app" "backend")
+fi
+
+for target in "${targets[@]}"; do
+  case "$target" in
+    kiosk_app)
+      setup_env "kiosk_app" "${ROOT_DIR}/kiosk_app/requirements.txt" "${ROOT_DIR}/kiosk_app/.venv"
+      ;;
+    backend)
+      setup_env "backend" "${ROOT_DIR}/backend/requirements.txt" "${ROOT_DIR}/backend/.venv"
+      ;;
+    *)
+      echo "Unsupported target: $target" >&2
+      exit 1
+      ;;
+  esac
+done
 
 echo "All environments are ready."

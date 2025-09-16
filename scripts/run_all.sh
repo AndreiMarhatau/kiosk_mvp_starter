@@ -23,6 +23,9 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+echo "Ensuring application environments are ready..."
+"${ROOT_DIR}/scripts/install_requirements.sh"
+
 "${BACKEND_SCRIPT}" &
 pids+=($!)
 
