@@ -6,8 +6,9 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 if __package__ is None:  # pragma: no cover - script execution support
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from app import App  # type: ignore
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(package_dir))
+    from kiosk_app.app import App  # type: ignore
 else:  # pragma: no cover
     from .app import App
 
