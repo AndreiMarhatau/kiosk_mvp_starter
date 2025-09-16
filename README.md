@@ -34,6 +34,23 @@
 - API: http://127.0.0.1:8000/health
 - Мини‑админка: http://127.0.0.1:8000/admin
 
+### Сборка автономного `.exe`
+
+Для создания Windows‑исполняемого файла, который поднимает бэкенд и клиент одним процессом, используется `PyInstaller` и точка входа `combined_launcher.py`.
+
+Локально (Linux/macOS/Windows):
+
+```bash
+pip install -r backend/requirements.txt -r kiosk_app/requirements.txt pyinstaller
+python scripts/build_executable.py
+```
+
+Готовый файл появится в каталоге `dist/` (`kiosk_app.exe` на Windows). Быстрый тест бэкенда без запуска UI:
+
+```bash
+python combined_launcher.py --check-backend
+```
+
 ## Что входит
 - Публичные эндпойнты: `/config`, `/home/buttons`, `/pages/{slug}`, `/upload`
 - Мок‑данные (в памяти) для кнопок/страниц/темы
