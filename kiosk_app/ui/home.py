@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Callable, List
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -49,20 +50,60 @@ class KioskTile(QPushButton):
 
 
 class DropList(QWidget):
-    def __init__(self, theme: dict, items: List[dict], on_pick: Callable[[str], None], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        theme: dict,
+        items: List[dict],
+        on_pick: Callable[[str], None] | None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        for item in items:
-            btn = QPushButton(item.get("title", ""))
+        self.theme = theme
+        self.items = items or []
+        self.on_pick = on_pick
+
+        try:
+            self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        except Exception:
+            self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        try:
+            self.setAttribute(Qt.WA_StyledBackground, True)
+            self.setAttribute(Qt.WA_TranslucentBackground, True)
+        except Exception:
+            pass
+        self.setAutoFillBackground(False)
+
+        wrap = QVBoxLayout(self)
+        wrap.setContentsMargins(0, 0, 0, 0)
+        wrap.setSpacing(0)
+        self.setStyleSheet("background: transparent;")
+
+        for item in self.items:
+            title = item.get("title", "")
+            slug = item.get("target_slug", "")
+            bg = item.get("bg_color") or theme["primary"]
+            fg = item.get("text_color") or "#ffffff"
+
+            btn = QPushButton(title)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setStyleSheet(
-                "background:#ffffff; border:1px solid rgba(0,0,0,0.08);"
-                "border-radius:10px; padding:8px 14px; text-align:left;"
+                button_stylesheet(bg, fg=fg, radius=10, pad_v=14, pad_h=16, fs=18)
             )
-            btn.clicked.connect(lambda _, slug=item.get("target_slug", ""): on_pick(slug))
-            layout.addWidget(btn)
+            btn.setMinimumWidth(260)
+            try:
+                btn.setMinimumHeight(max(44, theme["tile_h"] - 48))
+            except Exception:
+                btn.setMinimumHeight(44)
+
+            if self.on_pick:
+                btn.clicked.connect(lambda _, slug=slug: self._select(slug))
+
+            wrap.addWidget(btn)
+
+    def _select(self, slug: str) -> None:
+        self.hide()
+        if self.on_pick:
+            self.on_pick(slug)
 
 
 class GroupTile(QPushButton):
@@ -77,6 +118,10 @@ class GroupTile(QPushButton):
         on_pick: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__()
+        self.theme = theme
+        self.items = items or []
+        self.on_pick = on_pick
+
         background = bg_color or theme["primary"]
         fg = text_color or "#ffffff"
         self.setStyleSheet(button_stylesheet(background, fg=fg, pad_v=10))
@@ -84,17 +129,56 @@ class GroupTile(QPushButton):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setMinimumHeight(theme["tile_h"])
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(8)
-        title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("font-size:20px; font-weight:700; background: transparent;")
-        layout.addWidget(title_lbl, 0, Qt.AlignCenter)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(14, 6, 14, 6)
+        row.setSpacing(0)
 
-        drop = DropList(theme, items, on_pick or (lambda slug: None), self)
-        drop.setStyleSheet("background: transparent;")
-        layout.addWidget(drop)
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet(
+            f"font-size:20px; font-weight:700; background: transparent; color: {fg};"
+        )
+        row.addStretch(1)
+        row.addWidget(title_lbl, 0, Qt.AlignCenter)
+        row.addStretch(1)
+
         add_shadow(self, blur=16, y=3)
+        self.clicked.connect(self._show_list)
+
+    def _show_list(self) -> None:
+        popup = DropList(self.theme, self.items, self.on_pick, parent=self)
+        try:
+            popup.setFixedWidth(max(self.width(), 260))
+        except Exception:
+            pass
+        popup.adjustSize()
+
+        pos = self.mapToGlobal(self.rect().bottomLeft())
+        x = pos.x()
+        y = pos.y() + 6
+
+        screen_geom = None
+        try:
+            window = self.window()
+            if hasattr(window, "screen") and window.screen():
+                screen_geom = window.screen().availableGeometry()
+        except Exception:
+            screen_geom = None
+        if screen_geom is None:
+            primary = QGuiApplication.primaryScreen()
+            if primary is not None:
+                screen_geom = primary.availableGeometry()
+
+        if screen_geom is not None:
+            w = popup.width()
+            h = popup.sizeHint().height()
+            if x + w > screen_geom.right() - 8:
+                x = max(8, screen_geom.right() - 8 - w)
+            x = max(8, x)
+            if y + h > screen_geom.bottom() - 8:
+                y = max(8, screen_geom.bottom() - 8 - h)
+
+        popup.move(x, y)
+        popup.show()
 
 
 class HomePage(QWidget):
