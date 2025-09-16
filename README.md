@@ -2,25 +2,37 @@
 
 ## Быстрый старт
 
-### 1) Бэкенд (FastAPI)
+### Установка зависимостей
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-bash run.sh  # или: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+./scripts/install_requirements.sh
 ```
-Откройте:  
-- API: http://127.0.0.1:8000/health  
-- Мини‑админка (UI‑скелет): http://127.0.0.1:8000/admin
+Скрипт создаст отдельные виртуальные окружения `.venv` для `backend` и `kiosk_app` и установит все зависимости. Можно переопределить интерпретатор через переменную `PYTHON_BIN` (например, `PYTHON_BIN=python3.11 ./scripts/install_requirements.sh`).
 
-### 2) Клиент киоска (PySide6)
-В отдельном терминале:
+### Запуск сервисов по отдельности
+- **Бэкенд (FastAPI)**
+  ```bash
+  ./scripts/run_backend.sh
+  ```
+  Параметры:
+  - `HOST` (по умолчанию `0.0.0.0`)
+  - `PORT` (по умолчанию `8000`)
+  - `ENABLE_RELOAD=0` отключит авто‑перезапуск.
+
+- **Клиент киоска (PySide6)**
+  ```bash
+  ./scripts/run_kiosk.sh
+  ```
+  Можно переопределить интерпретатор переменной `PYTHON_BIN` или точку входа `APP_ENTRY`.
+
+### Совместный запуск
 ```bash
-cd kiosk_app
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python main.py
+./scripts/run_all.sh
 ```
+Скрипт поднимет оба приложения параллельно и корректно завершит их по `Ctrl+C`. Убедитесь, что вы используете Bash‑совместимую оболочку (macOS/Linux или Git Bash/WSL на Windows).
+
+После старта доступны:
+- API: http://127.0.0.1:8000/health
+- Мини‑админка: http://127.0.0.1:8000/admin
 
 ## Что входит
 - Публичные эндпойнты: `/config`, `/home/buttons`, `/pages/{slug}`, `/upload`
