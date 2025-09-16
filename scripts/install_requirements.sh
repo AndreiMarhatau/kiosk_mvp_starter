@@ -4,6 +4,26 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
+resolve_venv_python() {
+  local app_name="$1"
+  local venv_path="$2"
+  local candidates=(
+    "${venv_path}/bin/python"
+    "${venv_path}/Scripts/python"
+    "${venv_path}/Scripts/python.exe"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    if [ -x "${candidate}" ]; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+
+  echo "[${app_name}] Could not locate python executable in ${venv_path}" >&2
+  return 1
+}
+
 usage() {
   cat <<'EOF'
 Usage: install_requirements.sh [--backend] [--kiosk]
@@ -25,13 +45,14 @@ setup_env() {
     "${PYTHON_BIN}" -m venv "${venv_path}"
   fi
 
-  # shellcheck disable=SC1090
-  source "${venv_path}/bin/activate"
+  local venv_python
+  if ! venv_python="$(resolve_venv_python "${app_name}" "${venv_path}")"; then
+    exit 1
+  fi
   echo "[${app_name}] Upgrading pip"
-  python -m pip install --upgrade pip
+  "${venv_python}" -m pip install --upgrade pip
   echo "[${app_name}] Installing requirements from ${requirements_file}"
-  python -m pip install -r "${requirements_file}"
-  deactivate
+  "${venv_python}" -m pip install -r "${requirements_file}"
 }
 
 declare -a targets=()
