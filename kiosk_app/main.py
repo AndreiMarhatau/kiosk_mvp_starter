@@ -16,20 +16,16 @@ except Exception:
 
 API = "http://127.0.0.1:9000"
 
-PAGE_CACHE_TTL = 30
-HOME_CACHE_TTL = 10
-PAGE_CACHE_LIMIT = 8
-
 # ---------------------- Светлая тема ----------------------
 THEME_DEFAULT = {
-    "bg": "#f5f7fb",           # ��騩 䮭
-    "surface": "#ffffff",      # ����窨/������
+    "bg": "#f5f7fb",           # общий фон
+    "surface": "#ffffff",      # карточки/кнопки
     "header_bg": "#ffffff",
     "footer_bg": "#ffffff",
     "border": "rgba(0,0,0,0.08)",
     "text": "#0f1419",
     "muted": "rgba(15,20,25,0.65)",
-    "primary": "#2563eb",      # ᨭ��
+    "primary": "#2563eb",      # синий
     "radius": 14,
     "gap": 16,
     "gap_v": 2,
@@ -100,8 +96,6 @@ def resolve_theme_background_local(path: str | None) -> str | None:
         pass
     return url.replace('\\', '/')
 
-
-
 def cache_http_file(url: str, limit_bytes: int | None = None, timeout: int = 20) -> str | None:
     """
     Скачивает HTTP/HTTPS ресурс в локальный кеш и возвращает путь к локальному файлу.
@@ -133,6 +127,19 @@ def cache_http_file(url: str, limit_bytes: int | None = None, timeout: int = 20)
         return target
     except Exception:
         return None
+
+
+def ensure_local_media_file(path: str, limit_bytes: int = 200 * 1024 * 1024) -> str | None:
+    if not path:
+        return None
+    url = resolve_url_or_path(path, API)
+    if not url:
+        return None
+    if url.startswith("http://") or url.startswith("https://"):
+        cached = cache_http_file(url, limit_bytes=limit_bytes, timeout=40)
+        return cached or None
+    return url.replace('\\', '/')
+
 
 def load_pixmap_any(path: str, api_base: str) -> QPixmap:
     """
@@ -211,7 +218,6 @@ def merge_theme(api_theme: dict | None):
     t['bg_image_local'] = resolve_theme_background_local(path_val)
     return t
 
-
 def build_background_qss(theme: dict, include_image: bool = True) -> str:
     color = theme.get('bg') or '#f5f7fb'
     parts = [f"background-color: {color};"]
@@ -225,8 +231,6 @@ def build_background_qss(theme: dict, include_image: bool = True) -> str:
     else:
         parts.append('background-image: none;')
     return ' '.join(parts)
-
-
 
 def darker(hex_color, factor=0.9):
     c = QColor(hex_color)
@@ -571,11 +575,6 @@ class HomePage(QWidget):
         # Убираем QScrollArea, чтобы не появлялся вертикальный скролл.
         # Контентная область теперь просто заполняет всё доступное пространство.
         self.wrap = QWidget()
-        try:
-            self.wrap.setAttribute(Qt.WA_StyledBackground, False)
-        except Exception:
-            pass
-        self.wrap.setStyleSheet('background: transparent;')
         self.wrap.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         outer.addWidget(self.wrap, 1)
         self.grid = QGridLayout(self.wrap)
@@ -655,7 +654,7 @@ class PageView(QWidget):
         super().__init__()
         self.theme = theme
         self.router = router
-        self.setStyleSheet(f"background: transparent; color:{theme['text']};")
+        self.setStyleSheet(f"{build_background_qss(theme, include_image=False)} color:{theme['text']};")
 
         outer = QVBoxLayout(self); outer.setContentsMargins(24,24,24,24); outer.setSpacing(theme["gap"])
         self.scroll = QScrollArea(); self.scroll.setWidgetResizable(True); self.scroll.setFrameShape(QFrame.NoFrame)
@@ -754,7 +753,7 @@ class PageView(QWidget):
                     vw = QVideoWidget(); player = QMediaPlayer(); audio = QAudioOutput()
                     try:
                         vw.setAttribute(Qt.WA_StyledBackground, True)
-                        vw.setStyleSheet(f"background:{self.theme['bg']};")
+                        vw.setStyleSheet(f"background-color:{self.theme['bg']};")
                         vw.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
                     except Exception:
                         pass
@@ -827,8 +826,9 @@ class ScreensaverLayer(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0,0,0,0)
         layout.setSpacing(0)
+        layout.setAlignment(Qt.AlignCenter)
 
-        self._message = QLabel('No media', self)
+        self._message = QLabel('Нет медиа', self)
         self._message.setAlignment(Qt.AlignCenter)
         self._message.setStyleSheet('color:#ffffff; font-size:32px; padding:16px;')
         layout.addWidget(self._message, 0, Qt.AlignCenter)
@@ -836,30 +836,25 @@ class ScreensaverLayer(QWidget):
         self._image = QLabel(self)
         self._image.setAlignment(Qt.AlignCenter)
         self._image.setStyleSheet('background:transparent;')
-        self._image.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self._image, 1)
+        layout.addWidget(self._image, 0, Qt.AlignCenter)
         self._image.hide()
 
         self._movie_label = QLabel(self)
         self._movie_label.setAlignment(Qt.AlignCenter)
-        self._movie_label.setStyleSheet('background:transparent;')
-        self._movie_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self._movie_label, 1)
+        layout.addWidget(self._movie_label, 0, Qt.AlignCenter)
         self._movie_label.hide()
 
         self._video_container = QWidget(self)
-        self._video_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._video_layout = QVBoxLayout(self._video_container)
         self._video_layout.setContentsMargins(0,0,0,0)
-        self._video_layout.setSpacing(0)
-        layout.addWidget(self._video_container, 1)
+        self._video_layout.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self._video_container, 0, Qt.AlignCenter)
         self._video_container.hide()
 
         self._movie = None
         self._player = None
         self._audio = None
         self._video_widget = None
-        self._image_pixmap = None
 
     def set_exit_callback(self, callback):
         self._on_exit = callback
@@ -906,32 +901,8 @@ class ScreensaverLayer(QWidget):
         self._movie_label.hide()
         self._image.hide()
         self._image.clear()
-        self._image_pixmap = None
         self._message.hide()
-        self._message.setText('No media')
-
-    def _apply_image_pixmap(self):
-        if not self._image_pixmap:
-            return
-        target = self.size()
-        if target.width() <= 0 or target.height() <= 0:
-            return
-        scaled = self._image_pixmap.scaled(target, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        self._image.setPixmap(scaled)
-
-    def _apply_movie_scaled_size(self):
-        if not self._movie:
-            return
-        target = self.size()
-        if target.width() <= 0 or target.height() <= 0:
-            return
-        frame_size = self._movie.frameRect().size()
-        if not frame_size.isEmpty():
-            target = frame_size.scaled(target, Qt.KeepAspectRatioByExpanding)
-        try:
-            self._movie.setScaledSize(target)
-        except Exception:
-            pass
+        self._message.setText('Нет медиа')
 
     def hide_media(self):
         self._cleanup()
@@ -940,7 +911,7 @@ class ScreensaverLayer(QWidget):
     def show_media(self, path: str | None) -> bool:
         self._cleanup()
         if not path:
-            self._message.setText('No media')
+            self._message.setText('Нет медиа')
             self._message.show()
             self.show()
             self.raise_()
@@ -950,14 +921,15 @@ class ScreensaverLayer(QWidget):
         if ext in self._IMAGE_EXTS:
             pix = load_pixmap_any(path, self.api_base)
             if pix and not pix.isNull():
-                self._image_pixmap = pix
-                self._apply_image_pixmap()
+                w = max(320, int(self.width() * 0.9) or 800)
+                h = max(240, int(self.height() * 0.9) or 600)
+                scaled = pix.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self._image.setPixmap(scaled)
                 self._image.show()
                 success = True
             else:
-                self._message.setText('Unable to load image')
+                self._message.setText('Не удалось загрузить изображение')
                 self._message.show()
-
         elif ext in self._GIF_EXTS:
             local = ensure_local_media_file(path)
             if local:
@@ -966,36 +938,27 @@ class ScreensaverLayer(QWidget):
                     self._movie = movie
                     self._movie_label.setMovie(movie)
                     self._movie_label.show()
-                    self._apply_movie_scaled_size()
                     movie.start()
                     success = True
                 else:
-                    self._message.setText('Unable to load GIF')
+                    self._message.setText('Не удалось загрузить GIF')
                     self._message.show()
             else:
-                self._message.setText('Unable to load GIF')
+                self._message.setText('Не удалось загрузить GIF')
                 self._message.show()
-
         elif ext in self._VIDEO_EXTS:
             try:
                 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
                 from PySide6.QtMultimediaWidgets import QVideoWidget
             except Exception:
-                self._message.setText('QtMultimedia is unavailable')
+                self._message.setText('Модуль QtMultimedia недоступен')
                 self._message.show()
             else:
                 url = url_or_local_for_video(path, self.api_base)
                 vw = QVideoWidget(self)
                 vw.setAttribute(Qt.WA_StyledBackground, True)
                 vw.setStyleSheet('background-color:#000;')
-                vw.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-                try:
-                    vw.setAspectRatioMode(Qt.KeepAspectRatioByExpanding)
-                except Exception:
-                    try:
-                        vw.setAspectRatioMode(Qt.KeepAspectRatio)
-                    except Exception:
-                        pass
+                vw.setMinimumSize(640, 360)
                 player = QMediaPlayer(self)
                 audio = QAudioOutput(self)
                 try:
@@ -1017,31 +980,18 @@ class ScreensaverLayer(QWidget):
                 self._video_widget = vw
                 self._player = player
                 self._audio = audio
-                self._video_layout.addWidget(vw)
+                self._video_layout.addWidget(vw, 0, Qt.AlignCenter)
                 self._video_container.show()
                 player.play()
                 success = True
-
         else:
             name = os.path.basename(path.split('?')[0]) or path
-            self._message.setText(f"File: {name}")
+            self._message.setText(f"Файл: {name}")
             self._message.show()
 
         self.show()
         self.raise_()
         return success
-
-    def resizeEvent(self, event):
-        if self._image_pixmap and self._image.isVisible():
-            self._apply_image_pixmap()
-        if self._movie and self._movie_label.isVisible():
-            self._apply_movie_scaled_size()
-        if self._video_widget and self._video_widget.isVisible():
-            try:
-                self._video_widget.updateGeometry()
-            except Exception:
-                pass
-        super().resizeEvent(event)
 
     def mousePressEvent(self, event):
         self._trigger_exit()
@@ -1076,33 +1026,8 @@ class App(QWidget):
         self.setWindowTitle("Kiosk")
 
         self.theme = THEME_DEFAULT.copy()
-        self._default_palette = self.palette()
         self._bg_pixmap_original = None
-        self._bg_pixmap_path = None
-        try:
-            self.setAttribute(Qt.WA_StyledBackground, True)
-        except Exception:
-            pass
         self._current_route = 'home'
-        self._screensaver_cfg = {"path": None, "timeout": 0}
-        self._page_cache = {}
-        self._page_cache_order = []
-        self._page_loading = set()
-        self._home_cache = None
-        self._screensaver_layer = ScreensaverLayer(API, parent=self)
-        self._screensaver_layer.set_exit_callback(self._on_screensaver_closed)
-        self._screensaver_layer.hide()
-        try:
-            self._screensaver_layer.setGeometry(self.rect())
-        except Exception:
-            pass
-        self._idle_timer = QTimer(self)
-        self._idle_timer.setSingleShot(True)
-        self._idle_timer.timeout.connect(self._show_screensaver)
-        try:
-            QApplication.instance().installEventFilter(self)
-        except Exception:
-            pass
 
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(0,0,0,0)
@@ -1122,7 +1047,9 @@ class App(QWidget):
         self.stack.addWidget(self.home)
         self.stack.addWidget(self.page)
         self.stack.addWidget(self.admin)
+        self._current_route = 'home'
 
+        self._screensaver_cfg = {"path": None, "timeout": 0}
         self._screensaver_layer = ScreensaverLayer(API, parent=self)
         self._screensaver_layer.set_exit_callback(self._on_screensaver_closed)
         self._screensaver_layer.hide()
@@ -1137,8 +1064,9 @@ class App(QWidget):
             QApplication.instance().installEventFilter(self)
         except Exception:
             pass
-
         self._update_screensaver_config({})
+
+        self._default_palette = self.palette()
         self.apply_global_styles()
         self._weather_state = {"show": False, "city": None}
         self.load_model()        # Start SSE listener to get instant updates from Admin
@@ -1164,69 +1092,52 @@ class App(QWidget):
             pass
 
     def apply_global_styles(self):
-        self._apply_home_background(self._current_route == 'home')
+        self.setStyleSheet(f"{build_background_qss(self.theme, include_image=False)} color:{self.theme['text']};")
 
     def _apply_home_background(self, enabled: bool):
         has_image = bool(self.theme.get('bg_image_local') or self.theme.get('bg_image_path'))
         if enabled and has_image:
-            path = self.theme.get('bg_image_local') or self.theme.get('bg_image_path')
-            self._set_background_image(path)
-            self.setStyleSheet(f"color:{self.theme['text']};")
+            self._set_background_image(self.theme.get('bg_image_local') or self.theme.get('bg_image_path'))
         else:
             self._clear_background_image()
-            qss = build_background_qss(self.theme, include_image=False)
-            self.setStyleSheet(f"{qss} color:{self.theme['text']};")
-
-        try:
-            if enabled:
-                self.home.setStyleSheet(f"background: transparent; color:{self.theme['text']};")
-            else:
-                self.home.setStyleSheet(f"background:{self.theme['bg']}; color:{self.theme['text']};")
-        except Exception:
-            pass
 
     def _set_background_image(self, path: str | None):
         if not path:
             self._clear_background_image()
             return
-        normalized = path.replace('\\', '/') if path else None
-        if normalized and normalized == getattr(self, '_bg_pixmap_path', None) and self._bg_pixmap_original is not None:
-            self._reapply_background_pixmap()
-            return
         pix = load_pixmap_any(path, API)
         if pix and not pix.isNull():
             self._bg_pixmap_original = pix
-            self._bg_pixmap_path = normalized
             self._reapply_background_pixmap()
         else:
-            self._bg_pixmap_path = None
             self._clear_background_image()
 
     def _clear_background_image(self):
         self._bg_pixmap_original = None
-        self._bg_pixmap_path = None
         self.setAutoFillBackground(False)
-        base = getattr(self, '_default_palette', None)
+        self.setPalette(self._default_palette)
+        self.setStyleSheet(f"{build_background_qss(self.theme, include_image=False)} color:{self.theme['text']};")
+
+    def _reapply_background_pixmap(self):
+        if not self._bg_pixmap_original:
+            self._clear_background_image()
+            return
+        scaled = self._bg_pixmap_original.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        pal = self.palette()
+        pal.setBrush(self.backgroundRole(), QBrush(scaled))
+        self.setPalette(pal)
+        self.setAutoFillBackground(True)
         try:
-            if base is not None:
-                self.setPalette(base)
-            else:
-                self.setPalette(self.style().standardPalette())
+            self.setStyleSheet(f"color:{self.theme['text']};")
         except Exception:
             pass
 
-    def _reapply_background_pixmap(self):
-        pix = getattr(self, '_bg_pixmap_original', None)
-        if not pix:
-            return
-        scaled = pix.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        pal = self.palette()
-        try:
-            pal.setBrush(self.backgroundRole(), QBrush(scaled))
-        except Exception:
-            return
-        self.setPalette(pal)
-        self.setAutoFillBackground(True)
+    def _apply_home_background(self, enabled: bool):
+        has_image = bool(self.theme.get('bg_image_local') or self.theme.get('bg_image_path'))
+        if enabled and has_image:
+            self.setStyleSheet(f"{build_background_qss(self.theme, include_image=True)} color:{self.theme['text']};")
+        else:
+            self.setStyleSheet(f"{build_background_qss(self.theme, include_image=False)} color:{self.theme['text']};")
 
     def route(self, slug):
         self._handle_user_activity()
@@ -1242,11 +1153,8 @@ class App(QWidget):
             self.page.render_blocks(data.get("blocks", []))
             self.stack.setCurrentIndex(1)
         except Exception as e:
-            self.page.render_blocks([{"kind": "text", "content": {"html": f"<p>Ошибка загрузки: {e}</p>"}}])
+            self.page.render_blocks([{"kind":"text","content":{"html":f"<p>Error загрузки страницы: {e}</p>"}}])
             self.stack.setCurrentIndex(1)
-
-
-
 
     def load_model(self):
         try:
@@ -1255,10 +1163,6 @@ class App(QWidget):
             cfg = {"org_name":"Организация","footer_qr_text":"","footer_clock_format":"%H:%M","theme":{}}
 
         self.theme = merge_theme(cfg.get("theme"))
-        self._bg_pixmap_original = None
-        self._bg_pixmap_path = None
-        self._invalidate_page_cache()
-        self._invalidate_home_cache()
 
         # Header
         self.root_layout.removeWidget(self.header)
@@ -1296,17 +1200,17 @@ class App(QWidget):
         self.stack.addWidget(self.home)
         self.stack.addWidget(self.page)
         self.stack.addWidget(self.admin)
-
-        self._current_route = 'home'
-        self.apply_global_styles()
         self._update_screensaver_config(cfg.get("screensaver") or {})
-        self.load_home(force=True)
+
+        self.apply_global_styles()
+        self._current_route = 'home'
+        self.load_home()
 
     def _poll_config_changes(self):
         try:
             cfg = requests.get(f"{API}/config", timeout=6).json()
         except Exception:
-            return  
+            return
         try:
             want_show = bool(cfg.get("show_weather"))
             want_city = (cfg.get("weather_city") or "").strip() or None
@@ -1327,6 +1231,7 @@ class App(QWidget):
                     self._weather_state = {"show": False, "city": None}
         except Exception:
             pass
+
         try:
             scfg = (cfg.get("screensaver") or {})
             new_path = scfg.get("path") or None
@@ -1340,128 +1245,6 @@ class App(QWidget):
                 self._update_screensaver_config({"path": new_path, "timeout": new_timeout})
         except Exception:
             pass
-
-    def load_home(self, force: bool = False):
-        is_home_view = (self._current_route == 'home')
-        if is_home_view:
-            self._apply_home_background(True)
-            self._handle_user_activity()
-
-        cached = self._home_cache
-        fresh = cached and (time.time() - cached['ts'] <= HOME_CACHE_TTL)
-        if fresh and not force:
-            if is_home_view:
-                self.home.build(cached['data'])
-            return
-
-        data = self._fetch_home_sync()
-        if data is None:
-            if is_home_view and cached:
-                self.home.build(cached['data'])
-            elif is_home_view and not cached:
-                self.home.build([])
-            return
-
-        if is_home_view:
-            self.home.build(data)
-
-    def open_admin(self):
-        self._handle_user_activity()
-        self._current_route = 'admin'
-        self._apply_home_background(False)
-        # ������� ������� �� ���������� WebView (���� ��������), ����� ������� ���������
-        url = f"{API}/login"
-        self.admin.load(url)
-        # ���� ���� ���������� �������, ������� ��� �� ������
-        if getattr(self.admin, 'view', None) is not None:
-            self.stack.setCurrentWidget(self.admin)
-
-    def _fetch_home_sync(self):
-        try:
-            resp = requests.get(f"{API}/home/menu", timeout=7)
-            resp.raise_for_status()
-            raw = resp.json()
-        except Exception:
-            return None
-        data = self._normalize_home_payload(raw)
-        self._home_cache = {'data': data, 'ts': time.time()}
-        return data
-
-    def _normalize_home_payload(self, payload):
-        if isinstance(payload, list):
-            return payload
-        if isinstance(payload, dict):
-            items = payload.get('items')
-            if isinstance(items, list):
-                return items
-        return []
-
-    def _is_page_cache_fresh(self, slug: str) -> bool:
-        record = self._page_cache.get(slug)
-        if not record:
-            return False
-        try:
-            ts = float(record.get('ts') or 0)
-        except Exception:
-            return False
-        return (time.time() - ts) <= PAGE_CACHE_TTL
-
-    def _fetch_page_async(self, slug: str, force: bool = False):
-        if slug in self._page_loading:
-            return
-        if not force and self._is_page_cache_fresh(slug):
-            return
-        self._page_loading.add(slug)
-
-        def worker():
-            try:
-                resp = requests.get(f"{API}/pages/{slug}", timeout=7)
-                resp.raise_for_status()
-                data = resp.json()
-                error = None
-            except Exception as exc:
-                data = None
-                error = exc
-
-            def apply():
-                self._page_loading.discard(slug)
-                if error is not None:
-                    if self._current_route == slug:
-                        html = f"<p>Ошибка загрузки страницы: {error}</p>"
-                        self.page.render_blocks([{"kind": "text", "content": {"html": html}}])
-                        self.stack.setCurrentIndex(1)
-                    return
-                payload = data if isinstance(data, dict) else {}
-                self._cache_page(slug, payload)
-                if self._current_route == slug:
-                    self.page.render_blocks(payload.get("blocks", []))
-                    self.stack.setCurrentIndex(1)
-
-            QTimer.singleShot(0, apply)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _cache_page(self, slug: str, payload: dict):
-        record = {'data': payload, 'ts': time.time()}
-        self._page_cache[slug] = record
-        if slug in self._page_cache_order:
-            self._page_cache_order.remove(slug)
-        self._page_cache_order.append(slug)
-        while len(self._page_cache_order) > PAGE_CACHE_LIMIT:
-            evicted = self._page_cache_order.pop(0)
-            self._page_cache.pop(evicted, None)
-
-    def _invalidate_page_cache(self):
-        self._page_cache.clear()
-        self._page_cache_order.clear()
-        self._page_loading.clear()
-
-    def _invalidate_home_cache(self):
-        self._home_cache = None
-
-
-
-
 
     def _handle_user_activity(self):
         try:
@@ -1478,10 +1261,7 @@ class App(QWidget):
             timeout = 0
         path = self._screensaver_cfg.get('path')
         if timeout <= 0 or not path:
-            try:
-                self._idle_timer.stop()
-            except Exception:
-                pass
+            self._idle_timer.stop()
             return
         try:
             self._idle_timer.start(max(1000, timeout * 1000))
@@ -1529,33 +1309,12 @@ class App(QWidget):
             except Exception:
                 pass
         self._reset_idle_timer()
-        if self._current_route == 'home':
-            try:
-                self._apply_home_background(True)
-            except Exception:
-                pass
+        self._apply_home_background(self._current_route == 'home')
 
     def _on_screensaver_closed(self):
         self._reset_idle_timer()
 
-    def resizeEvent(self, event):
-        try:
-            if self._screensaver_layer:
-                self._screensaver_layer.setGeometry(self.rect())
-        except Exception:
-            pass
-        if self._current_route == 'home':
-            try:
-                self._apply_home_background(True)
-            except Exception:
-                pass
-        super().resizeEvent(event)
-
-
-    # ---- Global context menu (right-click) ----
     def eventFilter(self, obj, event):
-        # �����: �� �������� super().eventFilter(obj, event),
-        # �.�. obj ����� ���� �� QObject (��������, QWidgetItem) � PySide ����� �� ���������.
         try:
             if event and event.type() == QEvent.ContextMenu:
                 self._ctx_menu_simple(event.globalPos())
@@ -1563,13 +1322,40 @@ class App(QWidget):
         except Exception:
             pass
         try:
-            if event and event.type() in (QEvent.MouseButtonPress, QEvent.MouseButtonRelease, QEvent.MouseMove, QEvent.KeyPress, QEvent.TouchBegin, QEvent.TouchUpdate, QEvent.TouchEnd):
+            if event and event.type() in (QEvent.MouseButtonPress, QEvent.KeyPress, QEvent.TouchBegin, QEvent.TouchEnd):
                 self._handle_user_activity()
         except Exception:
             pass
-        # ��� ���� ������ ������� ������ �� ���������
         return False
 
+    def resizeEvent(self, event):
+        try:
+            if self._screensaver_layer:
+                self._screensaver_layer.setGeometry(self.rect())
+        except Exception:
+            pass
+        if getattr(self, '_bg_pixmap_original', None) is not None and getattr(self, '_current_route', None) == 'home':
+            try:
+                self._reapply_background_pixmap()
+            except Exception:
+                pass
+        super().resizeEvent(event)
+
+    def load_home(self):
+        self._apply_home_background(True)
+        try:
+            menu = requests.get(f"{API}/home/menu", timeout=7).json()
+        except Exception:
+            menu = []
+        self.home.build(menu)
+
+    def open_admin(self):
+        # Открыть админку во встроенном WebView (если доступен), иначе внешним браузером
+        url = f"{API}/login"
+        self.admin.load(url)
+        # Если есть встроенный браузер, покажем его во фрейме
+        if getattr(self.admin, 'view', None) is not None:
+            self.stack.setCurrentWidget(self.admin)
 
     class ExitPasswordDialog(QDialog):
         def __init__(self, theme, parent=None):
@@ -1808,12 +1594,8 @@ if __name__ == "__main__":
                                 continue
                             typ = (msg or {}).get("type")
                             if typ == "config_updated":
-                                self._invalidate_page_cache()
-                                self._invalidate_home_cache()
                                 QTimer.singleShot(0, self.load_model)
                             elif typ == "menu_updated":
-                                self._invalidate_page_cache()
-                                self._invalidate_home_cache()
-                                QTimer.singleShot(0, lambda: self.load_home(force=True))
+                                QTimer.singleShot(0, self.load_home)
             except Exception:
                 time.sleep(3)
