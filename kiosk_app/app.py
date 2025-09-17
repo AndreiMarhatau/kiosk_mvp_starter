@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from .backend.api import BackendAPI
 from .backend.media import MediaClient
-from .theme import THEME_DEFAULT, merge_theme
+from .theme import THEME_DEFAULT, build_background_qss, merge_theme
 from .ui import (
     AdminView,
     ExitPwdDialog,
@@ -24,6 +24,7 @@ from .ui import (
     Header,
     HomePage,
     PageView,
+    ScreensaverLayer,
     install_password_dialog_patch,
 )
 
@@ -39,6 +40,7 @@ class App(QWidget):
         install_password_dialog_patch(lambda: getattr(self, "theme", THEME_DEFAULT))
 
         self.theme = THEME_DEFAULT.copy()
+        self._current_route = "home"
 
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
@@ -59,6 +61,23 @@ class App(QWidget):
         self.stack.addWidget(self.page)
         self.stack.addWidget(self.admin)
 
+        self._screensaver_cfg: Dict[str, object] = {"path": None, "timeout": 0}
+        self._screensaver_layer = ScreensaverLayer(self.media, parent=self)
+        self._screensaver_layer.set_exit_callback(self._on_screensaver_closed)
+        self._screensaver_layer.hide()
+        try:
+            self._screensaver_layer.setGeometry(self.rect())
+        except Exception:
+            pass
+
+        self._idle_timer = QTimer(self)
+        self._idle_timer.setSingleShot(True)
+        self._idle_timer.timeout.connect(self._show_screensaver)
+
+        try:
+            QApplication.instance().installEventFilter(self)
+        except Exception:
+            pass
         self.apply_global_styles()
         self._weather_state: Dict[str, Optional[str]] = {"show": False, "city": None}
         self.load_model()
@@ -87,10 +106,22 @@ class App(QWidget):
 
     # ---------------------- Core behaviour ----------------------
     def apply_global_styles(self) -> None:
-        self.setStyleSheet(f"background:{self.theme['bg']}; color:{self.theme['text']};")
+        self._apply_home_background(self._current_route == "home")
+
+    def _apply_home_background(self, enabled: bool) -> None:
+        include_image = enabled and bool(
+            self.theme.get("bg_image_local") or self.theme.get("bg_image_path")
+        )
+        self.setStyleSheet(
+            f"{build_background_qss(self.theme, include_image=include_image)} color:{self.theme['text']};"
+        )
 
     def route(self, slug: str) -> None:
-        if slug == "home":
+        self._handle_user_activity()
+        is_home = slug == "home"
+        self._current_route = "home" if is_home else slug
+        self._apply_home_background(is_home)
+        if is_home:
             self.stack.setCurrentIndex(0)
             self.load_home()
             return
@@ -110,7 +141,12 @@ class App(QWidget):
 
     def load_model(self) -> None:
         cfg = self.backend.fetch_config()
-        self.theme = merge_theme(cfg.get("theme"))
+        theme_payload = cfg.get("theme") if isinstance(cfg, dict) else {}
+        self.theme = merge_theme(theme_payload)
+        bg_path = (theme_payload or {}).get("bg_image_path") if isinstance(theme_payload, dict) else None
+        local_bg = self.media.ensure_media(bg_path, limit_bytes=15 * 1024 * 1024) if bg_path else None
+        self.theme["bg_image_path"] = bg_path or None
+        self.theme["bg_image_local"] = local_bg
 
         # Header
         self.root_layout.removeWidget(self.header)
@@ -151,6 +187,9 @@ class App(QWidget):
         self.stack.addWidget(self.admin)
 
         self.apply_global_styles()
+        self._current_route = "home"
+        self._apply_home_background(True)
+        self._update_screensaver_config(cfg.get("screensaver") or {})
         self.load_home()
 
     def _poll_config_changes(self) -> None:
@@ -176,6 +215,20 @@ class App(QWidget):
         except Exception:
             pass
 
+        try:
+            screensaver_cfg = cfg.get("screensaver") or {}
+            new_path = screensaver_cfg.get("path") or None
+            try:
+                new_timeout = int(screensaver_cfg.get("timeout") or 0)
+            except Exception:
+                new_timeout = 0
+            current_path = self._screensaver_cfg.get("path")
+            current_timeout = int(self._screensaver_cfg.get("timeout") or 0)
+            if new_path != current_path or new_timeout != current_timeout:
+                self._update_screensaver_config({"path": new_path, "timeout": new_timeout})
+        except Exception:
+            pass
+
     def load_home(self) -> None:
         menu = self.backend.fetch_menu()
         self.home.build(menu)
@@ -192,6 +245,17 @@ class App(QWidget):
             if event and event.type() == QEvent.ContextMenu:
                 self._ctx_menu_simple(event.globalPos())
                 return True
+        except Exception:
+            pass
+        try:
+            if event and event.type() in (
+                QEvent.MouseButtonPress,
+                QEvent.KeyPress,
+                QEvent.TouchBegin,
+                QEvent.TouchUpdate,
+                QEvent.TouchEnd,
+            ):
+                self._handle_user_activity()
         except Exception:
             pass
         return False
@@ -216,6 +280,83 @@ class App(QWidget):
         menu.addAction(act_reload)
 
         menu.exec(global_pos)
+
+    # ---------------------- Screensaver & idle handling ----------------------
+    def _handle_user_activity(self) -> None:
+        try:
+            if self._screensaver_layer and self._screensaver_layer.isVisible():
+                self._screensaver_layer.hide_media()
+        except Exception:
+            pass
+        self._reset_idle_timer()
+
+    def _reset_idle_timer(self) -> None:
+        try:
+            timeout = int(self._screensaver_cfg.get("timeout") or 0)
+        except Exception:
+            timeout = 0
+        path = self._screensaver_cfg.get("path")
+        if timeout <= 0 or not path:
+            self._idle_timer.stop()
+            return
+        try:
+            self._idle_timer.start(max(1000, timeout * 1000))
+        except Exception:
+            pass
+
+    def _show_screensaver(self) -> None:
+        path = self._screensaver_cfg.get("path")
+        if not path:
+            return
+        try:
+            self._idle_timer.stop()
+        except Exception:
+            pass
+        try:
+            self._screensaver_layer.setGeometry(self.rect())
+        except Exception:
+            pass
+        try:
+            showed = bool(self._screensaver_layer.show_media(path))
+        except Exception:
+            showed = False
+        if showed:
+            try:
+                self._screensaver_layer.raise_()
+            except Exception:
+                pass
+        else:
+            self._reset_idle_timer()
+
+    def _update_screensaver_config(self, data: dict) -> None:
+        if not isinstance(data, dict):
+            data = {}
+        path = data.get("path") or None
+        try:
+            timeout = int(data.get("timeout") or 0)
+        except Exception:
+            timeout = 0
+        if timeout < 0:
+            timeout = 0
+        self._screensaver_cfg = {"path": path, "timeout": timeout}
+        if not path and self._screensaver_layer and self._screensaver_layer.isVisible():
+            try:
+                self._screensaver_layer.hide_media()
+            except Exception:
+                pass
+        self._reset_idle_timer()
+        self._apply_home_background(self._current_route == "home")
+
+    def _on_screensaver_closed(self) -> None:
+        self._reset_idle_timer()
+
+    def resizeEvent(self, event):  # type: ignore[override]
+        try:
+            if self._screensaver_layer:
+                self._screensaver_layer.setGeometry(self.rect())
+        except Exception:
+            pass
+        super().resizeEvent(event)
 
     def _confirm_exit_fullscreen(self) -> bool:
         while True:

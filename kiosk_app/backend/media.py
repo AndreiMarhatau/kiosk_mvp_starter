@@ -94,6 +94,24 @@ def ensure_local_file_for_pdf(path: str, api_base: str) -> str:
     return local_path
 
 
+def ensure_local_media_file(
+    path: str,
+    api_base: str,
+    *,
+    limit_bytes: Optional[int] = 200 * 1024 * 1024,
+    timeout: int = 40,
+) -> Optional[str]:
+    if not path:
+        return None
+    url = resolve_url_or_path(path, api_base)
+    if not url:
+        return None
+    if url.startswith("http://") or url.startswith("https://"):
+        cached = _cache_http_file(url, limit_bytes=limit_bytes, timeout=timeout)
+        return cached or None
+    return url.replace("\\", "/")
+
+
 def url_or_local_for_video(path: str, api_base: str) -> QUrl:
     if not path:
         return QUrl()
@@ -123,3 +141,12 @@ class MediaClient:
 
     def video_url(self, path: str) -> QUrl:
         return url_or_local_for_video(path, self.base_url)
+
+    def ensure_media(
+        self,
+        path: str,
+        *,
+        limit_bytes: Optional[int] = None,
+        timeout: int = 40,
+    ) -> Optional[str]:
+        return ensure_local_media_file(path, self.base_url, limit_bytes=limit_bytes, timeout=timeout)

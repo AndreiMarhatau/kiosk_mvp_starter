@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..backend.media import MediaClient
+from ..theme import build_background_qss
 from .styles import add_shadow
 
 
@@ -24,7 +25,7 @@ class PageView(QWidget):
         self.theme = theme
         self.router = router
         self.media = media
-        self.setStyleSheet(f"background:{theme['bg']}; color:{theme['text']};")
+        self.setStyleSheet(f"{build_background_qss(theme, include_image=False)} color:{theme['text']};")
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(24, 24, 24, 24)

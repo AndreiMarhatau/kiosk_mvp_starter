@@ -187,7 +187,7 @@ class HomePage(QWidget):
         self.theme = theme
         self.router = router
         self.buttons_data: List[dict] = []
-        self.setStyleSheet(f"background:{theme['bg']}; color:{theme['text']};")
+        self.setStyleSheet(f"background: transparent; color:{theme['text']};")
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(24, 24, 24, 24)
