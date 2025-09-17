@@ -272,8 +272,66 @@
       <!-- Theme -->
       <section id="section-theme" data-route="theme" hidden>
         <section class="panel">
-          <h2>Стили</h2>
-          <p>Здесь появится настройка цветов и логотипа.</p>
+          <h2>Стили главной страницы</h2>
+          <p class="muted small">Измените цвет или загрузите изображение для фона домашнего экрана киоска.</p>
+          <div class="form-grid" style="max-width:320px;">
+            <label class="field">
+              <span>Цвет фона</span>
+              <input id="themeBgColor" type="color" value="#f5f7fb" />
+            </label>
+          </div>
+          <div class="row" style="align-items:flex-start;">
+            <div>
+              <div class="muted small">Изображение фона (png/jpg/webp)</div>
+              <div class="muted small" style="margin-top:4px;">Размер изображения загружать согласно разрешению экрана.</div>
+              <div class="u-row" style="margin-top:8px;">
+                <input id="themeBgFile" type="file" accept=".png,.jpg,.jpeg,.webp" />
+                <button id="themeBgPick" class="u-btn ghost" type="button">Выбрать файл</button>
+                <button id="themeBgUpload" class="u-btn" type="button">Загрузить</button>
+                <button id="themeBgClear" class="u-btn danger" type="button">Очистить</button>
+              </div>
+              <div id="themeBgStatus" class="muted small" style="margin-top:8px;"></div>
+            </div>
+            <div class="theme-preview-wrap">
+              <div id="themeBgPreview" class="theme-preview" hidden>Без фона</div>
+            </div>
+          </div>
+          <div class="footer" style="margin-top:16px;">
+            <button id="themeSave" class="btn primary">Сохранить</button>
+          </div>
+        </section>
+
+        <section class="panel" style="margin-top:18px;">
+          <h3 style="margin-top:0;">Скринсейвер</h3>
+          <p class="muted small">Загрузите изображение, GIF или видео, укажите таймер простоя — и заставка отобразится на киоске.</p>
+          <div class="form-grid" style="max-width:320px;">
+            <label class="field">
+              <span>Таймер бездействия (сек)</span>
+              <input id="screensaverTimeout" type="number" min="0" step="10" value="0" />
+            </label>
+          </div>
+          <div class="row" style="align-items:flex-start;">
+            <div>
+              <div class="muted small">Файл скринсейвера (mp4/webm/gif/png/jpg/webp)</div>
+              <div class="u-row" style="margin-top:8px;">
+                <input id="screensaverFile" type="file" accept=".mp4,.webm,.mov,.avi,.mkv,.gif,.png,.jpg,.jpeg,.webp" />
+                <button id="screensaverPick" class="u-btn ghost" type="button">Выбрать файл</button>
+                <button id="screensaverUpload" class="u-btn" type="button">Загрузить</button>
+                <button id="screensaverClear" class="u-btn danger" type="button">Очистить</button>
+              </div>
+              <div id="screensaverStatus" class="muted small" style="margin-top:8px;"></div>
+            </div>
+            <div class="theme-preview-wrap">
+              <div id="screensaverPreview" class="theme-preview" hidden>
+                <video id="screensaverPreviewVideo" class="preview-media" muted loop playsinline style="display:none;"></video>
+                <img id="screensaverPreviewImage" class="preview-media" alt="Превью" style="display:none;" />
+                <div id="screensaverPreviewText" class="preview-text">Нет медиа</div>
+              </div>
+            </div>
+          </div>
+          <div class="footer" style="margin-top:16px;">
+            <button id="screensaverSave" class="btn primary">Сохранить</button>
+          </div>
         </section>
       </section>
 

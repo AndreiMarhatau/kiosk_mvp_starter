@@ -1,7 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+import os
 
-DATABASE_URL = "sqlite:///app/kiosk.db"  # файл рядом с backend/app
+BASE_DIR = os.path.dirname(__file__)
+DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'kiosk.db')}"
+print("Using DB:", DATABASE_URL)
 
 engine = create_engine(
     DATABASE_URL, connect_args={"check_same_thread": False}

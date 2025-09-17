@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMenu, QGraphicsDropShadowEffect, QInputDialog, QLineEdit, QDialog, QDialogButtonBox, QCheckBox, QMessageBox
 )
 from PySide6.QtCore import Qt, QTimer, QSize, QUrl, QEvent
-from PySide6.QtGui import QPixmap, QColor, QFont, QImage, QGuiApplication, QDesktopServices
+from PySide6.QtGui import QPixmap, QColor, QFont, QImage, QGuiApplication, QDesktopServices, QMovie, QBrush
 from PySide6.QtGui import QAction
 
 # Попытка подключить встроенный браузер (WebEngine)
@@ -18,19 +18,21 @@ API = "http://127.0.0.1:8000"
 
 # ---------------------- Светлая тема ----------------------
 THEME_DEFAULT = {
-    "bg": "#f5f7fb",           # общий фон
-    "surface": "#ffffff",      # карточки/кнопки
+    "bg": "#f5f7fb",           # ��騩 䮭
+    "surface": "#ffffff",      # ����窨/������
     "header_bg": "#ffffff",
     "footer_bg": "#ffffff",
     "border": "rgba(0,0,0,0.08)",
     "text": "#0f1419",
     "muted": "rgba(15,20,25,0.65)",
-    "primary": "#2563eb",      # синий
+    "primary": "#2563eb",      # ᨭ��
     "radius": 14,
     "gap": 16,
     "gap_v": 2,
     "tile_min_w": 320,
     "tile_h": 80,
+    "bg_image_path": None,
+    "bg_image_local": None,
 }
 
 # ---------- helpers: media paths / cache / loading ----------
@@ -78,6 +80,23 @@ def resolve_url_or_path(path: str, api_base: str) -> str:
     if path.startswith("/media/"):
         return f"{api_base}{path}"
     return path
+
+def resolve_theme_background_local(path: str | None) -> str | None:
+    if not path:
+        return None
+    url = resolve_url_or_path(path, API)
+    if not url:
+        return None
+    try:
+        if url.startswith("http://") or url.startswith("https://"):
+            cached = cache_http_file(url, limit_bytes=15 * 1024 * 1024)
+            if cached:
+                url = cached
+    except Exception:
+        pass
+    return url.replace('\\', '/')
+
+
 
 def cache_http_file(url: str, limit_bytes: int | None = None, timeout: int = 20) -> str | None:
     """
@@ -175,13 +194,35 @@ def url_or_local_for_video(path: str, api_base: str) -> QUrl:
     return QUrl.fromLocalFile(url)
 
 def merge_theme(api_theme: dict | None):
-    if not api_theme:
-        return THEME_DEFAULT.copy()
     t = THEME_DEFAULT.copy()
+    if not api_theme:
+        t['bg_image_path'] = None
+        t['bg_image_local'] = None
+        return t
     for k in ("bg", "text", "primary"):
         if api_theme.get(k):
             t[k] = api_theme[k]
+    path_val = api_theme.get("bg_image_path")
+    t['bg_image_path'] = path_val or None
+    t['bg_image_local'] = resolve_theme_background_local(path_val)
     return t
+
+
+def build_background_qss(theme: dict, include_image: bool = True) -> str:
+    color = theme.get('bg') or '#f5f7fb'
+    parts = [f"background-color: {color};"]
+    if include_image:
+        path = theme.get('bg_image_local') or theme.get('bg_image_path')
+        if path:
+            url = path.replace('\\', '/')
+            parts.append(f"background-image: url({url}); background-repeat: no-repeat; background-position: center center; background-size: cover;")
+        else:
+            parts.append('background-image: none;')
+    else:
+        parts.append('background-image: none;')
+    return ' '.join(parts)
+
+
 
 def darker(hex_color, factor=0.9):
     c = QColor(hex_color)
@@ -758,6 +799,267 @@ class AdminView(QWidget):
             lay.addWidget(lbl)
 
     
+class ScreensaverLayer(QWidget):
+    _VIDEO_EXTS = {'.mp4', '.webm', '.avi', '.mov', '.mkv'}
+    _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.webp'}
+    _GIF_EXTS = {'.gif'}
+
+    def __init__(self, api_base: str, on_exit=None, parent=None):
+        super().__init__(parent)
+        self.api_base = api_base
+        self._on_exit = on_exit
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WA_AcceptTouchEvents, True)
+        self.setWindowFlags(Qt.Widget | Qt.FramelessWindowHint)
+        self.setStyleSheet('background-color:#000000;')
+        self.setVisible(False)
+        self.setFocusPolicy(Qt.NoFocus)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0,0,0,0)
+        layout.setSpacing(0)
+
+        self._message = QLabel('No media', self)
+        self._message.setAlignment(Qt.AlignCenter)
+        self._message.setStyleSheet('color:#ffffff; font-size:32px; padding:16px;')
+        layout.addWidget(self._message, 0, Qt.AlignCenter)
+
+        self._image = QLabel(self)
+        self._image.setAlignment(Qt.AlignCenter)
+        self._image.setStyleSheet('background:transparent;')
+        self._image.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self._image, 1)
+        self._image.hide()
+
+        self._movie_label = QLabel(self)
+        self._movie_label.setAlignment(Qt.AlignCenter)
+        self._movie_label.setStyleSheet('background:transparent;')
+        self._movie_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self._movie_label, 1)
+        self._movie_label.hide()
+
+        self._video_container = QWidget(self)
+        self._video_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._video_layout = QVBoxLayout(self._video_container)
+        self._video_layout.setContentsMargins(0,0,0,0)
+        self._video_layout.setSpacing(0)
+        layout.addWidget(self._video_container, 1)
+        self._video_container.hide()
+
+        self._movie = None
+        self._player = None
+        self._audio = None
+        self._video_widget = None
+        self._image_pixmap = None
+
+    def set_exit_callback(self, callback):
+        self._on_exit = callback
+
+    def _cleanup(self):
+        if self._movie:
+            try:
+                self._movie.stop()
+            except Exception:
+                pass
+            try:
+                self._movie.deleteLater()
+            except Exception:
+                pass
+        self._movie = None
+        if self._player:
+            try:
+                self._player.stop()
+            except Exception:
+                pass
+            try:
+                self._player.deleteLater()
+            except Exception:
+                pass
+        self._player = None
+        if self._audio:
+            try:
+                self._audio.deleteLater()
+            except Exception:
+                pass
+        self._audio = None
+        if self._video_widget:
+            try:
+                self._video_widget.deleteLater()
+            except Exception:
+                pass
+        self._video_widget = None
+        while self._video_layout.count():
+            item = self._video_layout.takeAt(0)
+            w = item.widget() if item else None
+            if w is not None:
+                w.setParent(None)
+        self._video_container.hide()
+        self._movie_label.hide()
+        self._image.hide()
+        self._image.clear()
+        self._image_pixmap = None
+        self._message.hide()
+        self._message.setText('No media')
+
+    def _apply_image_pixmap(self):
+        if not self._image_pixmap:
+            return
+        target = self.size()
+        if target.width() <= 0 or target.height() <= 0:
+            return
+        scaled = self._image_pixmap.scaled(target, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        self._image.setPixmap(scaled)
+
+    def _apply_movie_scaled_size(self):
+        if not self._movie:
+            return
+        target = self.size()
+        if target.width() <= 0 or target.height() <= 0:
+            return
+        frame_size = self._movie.frameRect().size()
+        if not frame_size.isEmpty():
+            target = frame_size.scaled(target, Qt.KeepAspectRatioByExpanding)
+        try:
+            self._movie.setScaledSize(target)
+        except Exception:
+            pass
+
+    def hide_media(self):
+        self._cleanup()
+        self.hide()
+
+    def show_media(self, path: str | None) -> bool:
+        self._cleanup()
+        if not path:
+            self._message.setText('No media')
+            self._message.show()
+            self.show()
+            self.raise_()
+            return False
+        ext = os.path.splitext(path.split('?')[0])[-1].lower()
+        success = False
+        if ext in self._IMAGE_EXTS:
+            pix = load_pixmap_any(path, self.api_base)
+            if pix and not pix.isNull():
+                self._image_pixmap = pix
+                self._apply_image_pixmap()
+                self._image.show()
+                success = True
+            else:
+                self._message.setText('Unable to load image')
+                self._message.show()
+
+        elif ext in self._GIF_EXTS:
+            local = ensure_local_media_file(path)
+            if local:
+                movie = QMovie(local)
+                if movie.isValid():
+                    self._movie = movie
+                    self._movie_label.setMovie(movie)
+                    self._movie_label.show()
+                    self._apply_movie_scaled_size()
+                    movie.start()
+                    success = True
+                else:
+                    self._message.setText('Unable to load GIF')
+                    self._message.show()
+            else:
+                self._message.setText('Unable to load GIF')
+                self._message.show()
+
+        elif ext in self._VIDEO_EXTS:
+            try:
+                from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+                from PySide6.QtMultimediaWidgets import QVideoWidget
+            except Exception:
+                self._message.setText('QtMultimedia is unavailable')
+                self._message.show()
+            else:
+                url = url_or_local_for_video(path, self.api_base)
+                vw = QVideoWidget(self)
+                vw.setAttribute(Qt.WA_StyledBackground, True)
+                vw.setStyleSheet('background-color:#000;')
+                vw.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                try:
+                    vw.setAspectRatioMode(Qt.KeepAspectRatioByExpanding)
+                except Exception:
+                    try:
+                        vw.setAspectRatioMode(Qt.KeepAspectRatio)
+                    except Exception:
+                        pass
+                player = QMediaPlayer(self)
+                audio = QAudioOutput(self)
+                try:
+                    audio.setVolume(0.0)
+                except Exception:
+                    pass
+                player.setVideoOutput(vw)
+                player.setAudioOutput(audio)
+                player.setSource(url)
+                try:
+                    if hasattr(player, 'setLoops'):
+                        loops = getattr(player, 'Loops', None)
+                        if loops and hasattr(loops, 'Infinite'):
+                            player.setLoops(loops.Infinite)
+                        else:
+                            player.setLoops(-1)
+                except Exception:
+                    pass
+                self._video_widget = vw
+                self._player = player
+                self._audio = audio
+                self._video_layout.addWidget(vw)
+                self._video_container.show()
+                player.play()
+                success = True
+
+        else:
+            name = os.path.basename(path.split('?')[0]) or path
+            self._message.setText(f"File: {name}")
+            self._message.show()
+
+        self.show()
+        self.raise_()
+        return success
+
+    def resizeEvent(self, event):
+        if self._image_pixmap and self._image.isVisible():
+            self._apply_image_pixmap()
+        if self._movie and self._movie_label.isVisible():
+            self._apply_movie_scaled_size()
+        if self._video_widget and self._video_widget.isVisible():
+            try:
+                self._video_widget.updateGeometry()
+            except Exception:
+                pass
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        self._trigger_exit()
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        self._trigger_exit()
+        super().keyPressEvent(event)
+
+    def event(self, event):
+        if event.type() in (QEvent.TouchBegin, QEvent.TouchUpdate, QEvent.TouchEnd):
+            self._trigger_exit()
+            return True
+        return super().event(event)
+
+    def _trigger_exit(self):
+        try:
+            self.hide_media()
+        except Exception:
+            pass
+        if callable(self._on_exit):
+            try:
+                self._on_exit()
+            except Exception:
+                pass
+
+
 class App(QWidget):
     def __init__(self):
         super().__init__()

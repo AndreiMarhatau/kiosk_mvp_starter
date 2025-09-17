@@ -1,0 +1,143 @@
+# _ctx_menu_simple
+        menu = QMenu(self)
+        # Переключатель полноэкранного
+        fs_text = "Открыть полноэкранный режим" if not self.isFullScreen() else "Выйти из полноэкранного режима"
+        act_full = QAction(fs_text, self)
+        def _toggle_full():
+            if self.isFullScreen():
+                # Кастомный диалог ввода пароля (с повтором ввода). При ошибке — fallback ниже.
+                try:
+                    while True:
+                        dlg = ExitPwdDialog(getattr(self, 'theme', THEME_DEFAULT), self)
+                        if dlg.exec() == QDialog.Accepted:
+                            pwd = dlg.password()
+                            try:
+                                r = requests.post(f"{API}/kiosk/verify-exit", json={'password': pwd}, timeout=7)
+                                if r.ok and r.json().get('ok'):
+                                    self.showNormal(); return
+                                else:
+                                    dlg.show_error('Неверный пароль'); continue
+                            except Exception:
+                                dlg.show_error('Ошибка соединения'); continue
+                        else:
+                            return
+                except Exception:
+                    pass
+                # запрос пароля у пользователя
+                try:
+                    pwd, ok = QInputDialog.getText(self, "Пароль", "Введите пароль для выхода:", QLineEdit.Password)
+                except Exception:
+                    pwd, ok = ("", True)
+                if not ok:
+                    return
+                try:
+                    r = requests.post(f"{API}/kiosk/verify-exit", json={"password": pwd}, timeout=7)
+                    if r.ok and r.json().get("ok"):
+                        self.showNormal()
+                    else:
+                        # неверный пароль — игнорируем
+                        return
+                except Exception:
+                    return
+            else:
+                self.showFullScreen()
+        act_full.triggered.connect(_toggle_full)
+        menu.addAction(act_full)
+
+        # Обновить
+        act_reload = QAction("Обновить", self)
+        act_reload.triggered.connect(self.load_model)
+        menu.addAction(act_reload)
+
+        menu.exec(global_pos)
+
+
+# _show_context_menu_inapp
+        menu = QMenu(self)
+        # Полноэкранный режим (переключатель)
+        fs_text = "Открыть полноэкранный режим" if not self.isFullScreen() else "Выйти из полноэкранного режима"
+        act_full = QAction(fs_text, self)
+        def _toggle_full():
+            if self.isFullScreen():
+                self.showNormal()
+            else:
+                self.showFullScreen()
+        act_full.triggered.connect(_toggle_full)
+        menu.addAction(act_full)
+
+        # Вход в админ‑панель (во встроенном окне)
+        act_admin = QAction("Вход в админ‑панель", self)
+        act_admin.triggered.connect(self.open_admin)
+        menu.addAction(act_admin)
+
+        # Обновить
+        act_reload = QAction("Обновить", self)
+        act_reload.triggered.connect(self.load_model)
+        menu.addAction(act_reload)
+
+        menu.exec(global_pos)
+
+
+# _show_context_menu2
+        menu = QMenu(self)
+        # Fullscreen toggle
+        fs_text = "Открыть полноэкранный режим" if not self.isFullScreen() else "Выйти из полноэкранного режима"
+        act_full = QAction(fs_text, self)
+        def _toggle_full():
+            if self.isFullScreen():
+                self.showNormal()
+            else:
+                self.showFullScreen()
+        act_full.triggered.connect(_toggle_full)
+        menu.addAction(act_full)
+
+       # Refresh
+        act_reload = QAction("Обновить", self)
+        act_reload.triggered.connect(self.load_model)
+        menu.addAction(act_reload)
+
+        menu.exec(global_pos)
+
+
+# _show_context_menu
+        menu = QMenu(self)
+
+        act_full = QAction("Открыть полноэкранный режим", self)
+        act_full.triggered.connect(lambda: self.showFullScreen())
+        menu.addAction(act_full)
+
+        act_reload = QAction("Обновить", self)
+        act_reload.triggered.connect(self.load_model)
+        menu.addAction(act_reload)
+
+        menu.exec(global_pos)
+
+# ---- Monkey-patch QInputDialog.getText for custom password dialog ----
+try:
+    _ORIG_QID_GETTEXT = QInputDialog.getText
+except Exception:
+    _ORIG_QID_GETTEXT = None
+
+def _kiosk_patched_get_text(parent, title, label, mode=QLineEdit.Normal):
+    try:
+        theme = getattr(parent, 'theme', THEME_DEFAULT)
+        dlg_cls = getattr(App, 'ExitPasswordDialog', None) or ExitPwdDialog
+        dlg = dlg_cls(theme, parent)
+        ok = (dlg.exec() == QDialog.Accepted)
+        return (dlg.password(), ok)
+    except Exception:
+        if _ORIG_QID_GETTEXT is not None:
+            return _ORIG_QID_GETTEXT(parent, title, label, mode)
+        try:
+            d = ExitPwdDialog(THEME_DEFAULT, parent)
+            ok = (d.exec() == QDialog.Accepted)
+            return (d.password(), ok)
+        except Exception:
+            return ("", False)
+
+try:
+    QInputDialog.getText = staticmethod(_kiosk_patched_get_text)
+except Exception:
+    pass
+
+

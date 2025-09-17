@@ -282,6 +282,8 @@ function renderPage(page){
   (page.blocks || []).forEach(blk => {
     const card = document.createElement('div');
     card.className = 'block-card';
+    card.setAttribute('draggable','true');
+    card.dataset.id = String(blk.id);
 
     const head = document.createElement('div');
     head.className = 'block-head';
@@ -332,6 +334,42 @@ function renderPage(page){
     card.appendChild(head);
     card.appendChild(meta);
     list.appendChild(card);
+  });
+  // Drag & drop reorder
+  const listEl = list;
+  let dragEl = null;
+  listEl.addEventListener('dragstart', (e)=>{
+    const el = e.target.closest('.block-card');
+    if(!el) return; dragEl = el; el.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  listEl.addEventListener('dragend', ()=>{ if(dragEl){ dragEl.classList.remove('dragging'); dragEl=null; } });
+  listEl.addEventListener('dragover', (e)=>{
+    e.preventDefault();
+    const after = getAfter(listEl, e.clientY);
+    const dragging = listEl.querySelector('.block-card.dragging');
+    if(!dragging) return;
+    if(after == null){ listEl.appendChild(dragging); } else { listEl.insertBefore(dragging, after); }
+  });
+  function getAfter(container, y){
+    const els = [...container.querySelectorAll('.block-card:not(.dragging)')];
+    return els.reduce((closest, child)=>{
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height/2;
+      if(offset < 0 && offset > closest.offset){ return { offset, element: child }; }
+      return closest;
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+  }
+  let saveTimer = null;
+  listEl.addEventListener('drop', ()=>{
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async ()=>{
+      const items = [...listEl.querySelectorAll('.block-card')].map((el, i)=>({ id: Number(el.dataset.id), order_index: i+1 }));
+      try{
+        await fetch(`/admin/pages/${page.id}/blocks/reorder`, { method:'PUT', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body: JSON.stringify({ items }) });
+        await loadPage();
+      }catch(err){ console.error(err); }
+    }, 100);
   });
 }
 
@@ -576,6 +614,21 @@ function showSection(route){
       ROUTE_INITED.media = true;
     }
   }
+
+  if (route === 'theme') {
+    if (!ROUTE_INITED.theme) {
+      if (typeof initTheme === 'function') initTheme();
+      ROUTE_INITED.theme = true;
+    }
+    if (typeof loadThemeSection === 'function') {
+      try {
+        const maybe = loadThemeSection();
+        if (maybe && typeof maybe.then === 'function') maybe.catch(err => console.error(err));
+      } catch(err) {
+        console.error(err);
+      }
+    }
+  }
 }
 
 function getRouteFromHash(){
@@ -605,6 +658,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // ========================= Dashboard (Org + Logo) =========================
 let orgInput, logoPick, logoUpload, logoFile, logoImg, orgSave;
 let dashboardState = { logo_path: '' };
+
+let themeBgColor, themeBgFile, themeBgPick, themeBgUpload, themeBgClear, themeBgPreview, themeBgStatus, themeSaveBtn;
+let themeState = { bg: '#f5f7fb', bg_image_path: null, loading: false };
+let screensaverFile, screensaverPick, screensaverUpload, screensaverClear, screensaverStatus, screensaverPreview, screensaverPreviewVideo, screensaverPreviewImage, screensaverPreviewText, screensaverTimeoutInput, screensaverSaveBtn;
+let screensaverState = { path: null, timeout: 0, loading: false };
+let screensaverSaveTimer = null;
 
 async function loadConfig(){
   try{
@@ -1223,6 +1282,367 @@ async function saveBtnForm(){
 }
 
 // Встроим «Изменить» в список + уберём DnD (не нужен)
+
+// ========================= Theme (background) =========================
+function updateThemeStatus(msg){
+  if (!themeBgStatus) return;
+  if (msg) {
+    themeBgStatus.textContent = msg;
+    return;
+  }
+  const current = themeState.bg_image_path;
+  themeBgStatus.textContent = current ? `Текущий фо#d: ${current}` : 'Фо#d не за#4а#d';
+}
+
+function updateThemePreview(){
+  if (!themeBgPreview) return;
+  const color = (themeBgColor?.value || '#f5f7fb');
+  themeState.bg = color;
+  themeBgPreview.style.backgroundColor = color;
+  const path = themeState.bg_image_path;
+  if (path){
+    const url = path.startsWith('http://') || path.startsWith('https://') ? path : path;
+    themeBgPreview.style.backgroundImage = `url("${url}")`;
+    themeBgPreview.dataset.hasImage = 'true';
+    themeBgPreview.textContent = '';
+  } else {
+    themeBgPreview.style.backgroundImage = 'none';
+    delete themeBgPreview.dataset.hasImage;
+    themeBgPreview.textContent = 'Без фона';
+  }
+  themeBgPreview.hidden = false;
+  if (themeBgClear) themeBgClear.disabled = !path;
+}
+
+function handleThemeFileChange({ keepMessage } = {}){
+  if (!themeBgFile) return;
+  const file = themeBgFile.files && themeBgFile.files[0];
+  if (file){
+    updateThemeStatus(`Выбран файл: ${file.name} (не сохранён)`);
+    if (themeBgUpload) themeBgUpload.disabled = false;
+  } else {
+    if (!keepMessage) updateThemeStatus();
+    if (themeBgUpload) themeBgUpload.disabled = true;
+  }
+}
+
+async function uploadThemeBackground(){
+  if (!themeBgFile || !(themeBgFile.files && themeBgFile.files[0])){
+    alert('Выберите файл для за#3$0узки');
+    return;
+  }
+  if (themeState.loading) return;
+  const file = themeBgFile.files[0];
+  const allowed = ['image/png','image/jpeg','image/webp'];
+  if (file.type && !allowed.includes(file.type)){
+    updateThemeStatus('Поддерживаются только изображения PNG/JPG/WebP');
+    return;
+  }
+  themeState.loading = true;
+  if (themeBgUpload) themeBgUpload.disabled = true;
+  const fd = new FormData();
+  fd.append('file', file);
+  try{
+    const res = await fetch('/upload', { method:'POST', credentials:'same-origin', body: fd });
+    if (!res.ok){
+      const txt = await res.text();
+      throw new Error(txt || 'Не удалось заг$0узить файл');
+    }
+    const data = await res.json();
+    themeState.bg_image_path = data?.path || null;
+    themeBgFile.value = '';
+    updateThemeStatus(themeState.bg_image_path ? `Загружено: ${themeState.bg_image_path}` : 'Фон удалён');
+    showToast?.({ title:'Загружено', type:'success' });
+  } catch(err){
+    console.error(err);
+    updateThemeStatus(err.message || 'Ошибка загрузки');
+    showToast?.({ title:'Ошибка', message: err.message || '', type:'error' });
+  } finally {
+    themeState.loading = false;
+    updateThemePreview();
+    handleThemeFileChange({ keepMessage: true });
+  }
+}
+
+async function saveTheme(){
+  if (themeState.loading) return;
+  const payload = {
+    bg: themeBgColor?.value || '#f5f7fb',
+    bg_image_path: themeState.bg_image_path
+  };
+  themeState.loading = true;
+  try{
+    const res = await fetch('/admin/theme', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok){
+      const txt = await res.text();
+      throw new Error(txt || 'Не удалось сохра#dить изменения');
+    }
+    const data = await res.json();
+    themeState.bg = data?.bg || payload.bg;
+    themeState.bg_image_path = data?.bg_image_path || null;
+    updateThemeStatus('Настройки сохранены');
+    showToast?.({ title:'Сохра#dе#dо', type:'success' });
+  } catch(err){
+    console.error(err);
+    updateThemeStatus(err.message || 'Ошибка сохра#dе#dия');
+    showToast?.({ title:'Оши#1#a#0', message: err.message || '', type:'error' });
+  } finally {
+    themeState.loading = false;
+    updateThemePreview();
+    handleThemeFileChange({ keepMessage: true });
+  }
+}
+
+function updateScreensaverStatus(msg){
+  if (!screensaverStatus) return;
+  if (msg){ screensaverStatus.textContent = msg; return; }
+  const path = screensaverState.path;
+  screensaverStatus.textContent = path ? `Текущий файл: ${path}` : 'Файл не выбран';
+}
+
+function getFileName(path=''){
+  if (!path) return '';
+  const clean = path.split('?')[0].split('#')[0];
+  const parts = clean.split('/');
+  return parts[parts.length - 1] || clean;
+}
+
+function screensaverExt(path=''){
+  const name = getFileName(path).toLowerCase();
+  const idx = name.lastIndexOf('.');
+  return idx >= 0 ? name.slice(idx) : '';
+}
+
+function resetScreensaverPreviewMedia(){
+  if (screensaverPreviewImage) screensaverPreviewImage.style.display = 'none';
+  if (screensaverPreviewVideo){
+    try { screensaverPreviewVideo.pause(); } catch(_){ }
+    screensaverPreviewVideo.removeAttribute('src');
+    screensaverPreviewVideo.load();
+    screensaverPreviewVideo.style.display = 'none';
+  }
+  if (screensaverPreviewText){
+    screensaverPreviewText.style.display = 'block';
+    screensaverPreviewText.textContent = 'Нет медиа';
+  }
+  if (screensaverPreview){
+    screensaverPreview.style.backgroundImage = 'none';
+    delete screensaverPreview.dataset.hasImage;
+  }
+}
+
+function updateScreensaverPreview(){
+  if (!screensaverPreview) return;
+  const path = screensaverState.path || '';
+  const ext = screensaverExt(path);
+  const url = path ? (path.startsWith('http://') || path.startsWith('https://') ? path : path) : '';
+
+  resetScreensaverPreviewMedia();
+  screensaverPreview.hidden = false;
+
+  if (!path) return;
+  const title = getFileName(path) || path;
+  if (screensaverPreviewText) screensaverPreviewText.textContent = title;
+
+  if (['.png','.jpg','.jpeg','.webp','.gif'].includes(ext)){
+    if (screensaverPreviewImage){
+      screensaverPreviewImage.src = url;
+      screensaverPreviewImage.style.display = 'block';
+    } else {
+      screensaverPreview.style.backgroundImage = `url("${url}")`;
+      screensaverPreview.dataset.hasImage = 'true';
+    }
+    if (screensaverPreviewText) screensaverPreviewText.style.display = 'none';
+  } else if (['.mp4','.webm','.avi','.mov','.mkv'].includes(ext)){
+    if (screensaverPreviewVideo){
+      screensaverPreviewVideo.src = url;
+      screensaverPreviewVideo.style.display = 'block';
+      try { screensaverPreviewVideo.load(); screensaverPreviewVideo.play().catch(()=>{}); } catch(_){ }
+      if (screensaverPreviewText) screensaverPreviewText.style.display = 'none';
+    }
+  }
+}
+
+function handleScreensaverFileChange({ keepMessage } = {}){
+  if (!screensaverFile) return;
+  const file = screensaverFile.files && screensaverFile.files[0];
+  if (file){
+    if (!keepMessage) updateScreensaverStatus(`Выбран файл: ${file.name}`);
+    if (screensaverUpload) screensaverUpload.disabled = false;
+  } else {
+    if (!keepMessage) updateScreensaverStatus();
+    if (screensaverUpload) screensaverUpload.disabled = true;
+  }
+}
+
+async function uploadScreensaver(){
+  if (!screensaverFile || !(screensaverFile.files && screensaverFile.files[0])){
+    alert('Выберите файл для загрузки');
+    return;
+  }
+  if (screensaverState.loading) return;
+  const file = screensaverFile.files[0];
+  const fd = new FormData();
+  fd.append('file', file);
+  screensaverState.loading = true;
+  if (screensaverUpload) screensaverUpload.disabled = true;
+  let needSave = false;
+  try{
+    const res = await fetch('/upload', { method:'POST', credentials:'same-origin', body: fd });
+    if (!res.ok){
+      const txt = await res.text();
+      throw new Error(txt || 'Не удалось загрузить');
+    }
+    const data = await res.json();
+    screensaverState.path = data?.path || null;
+    screensaverFile.value = '';
+    updateScreensaverStatus(screensaverState.path ? `Загружено: ${screensaverState.path}` : 'Файл удалён');
+    updateScreensaverPreview();
+    needSave = true;
+    showToast?.({ title:'Загружено', type:'success' });
+  } catch(err){
+    console.error(err);
+    updateScreensaverStatus(err.message || 'Ошибка загрузки');
+    showToast?.({ title:'Ошибка', message: err.message || '', type:'error' });
+  } finally {
+    screensaverState.loading = false;
+    handleScreensaverFileChange({ keepMessage: true });
+    if (needSave) await saveScreensaver(true);
+  }
+}
+
+function applyScreensaverConfig(cfg){
+  const timeout = Number(cfg?.timeout || 0);
+  screensaverState.timeout = timeout > 0 ? Math.round(timeout) : 0;
+  screensaverState.path = cfg?.path || null;
+  if (screensaverTimeoutInput){
+    screensaverTimeoutInput.value = screensaverState.timeout || 0;
+  }
+  updateScreensaverStatus();
+  updateScreensaverPreview();
+  handleScreensaverFileChange({ keepMessage: true });
+}
+
+async function saveScreensaver(auto = false){
+  if (screensaverState.loading && !auto) return;
+  const timeoutRaw = parseInt(screensaverTimeoutInput?.value || '0', 10);
+  const payload = {
+    timeout: Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 0,
+    path: screensaverState.path || null
+  };
+  try{
+    const res = await fetch('/admin/screensaver', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok){
+      const txt = await res.text();
+      throw new Error(txt || 'Не удалось сохранить');
+    }
+    const data = await res.json();
+    screensaverState.path = data?.path || null;
+    screensaverState.timeout = Number(data?.timeout || 0);
+    updateScreensaverStatus();
+    updateScreensaverPreview();
+    if (!auto) showToast?.({ title:'Сохранено', type:'success' });
+  } catch(err){
+    console.error(err);
+    updateScreensaverStatus(err.message || 'Ошибка сохранения');
+    showToast?.({ title:'Ошибка', message: err.message || '', type:'error' });
+  }
+}
+
+function initScreensaver(){
+  screensaverFile = document.getElementById('screensaverFile');
+  screensaverPick = document.getElementById('screensaverPick');
+  screensaverUpload = document.getElementById('screensaverUpload');
+  screensaverClear = document.getElementById('screensaverClear');
+  screensaverStatus = document.getElementById('screensaverStatus');
+  screensaverPreview = document.getElementById('screensaverPreview');
+  screensaverPreviewVideo = document.getElementById('screensaverPreviewVideo');
+  screensaverPreviewImage = document.getElementById('screensaverPreviewImage');
+  screensaverPreviewText = document.getElementById('screensaverPreviewText');
+  screensaverTimeoutInput = document.getElementById('screensaverTimeout');
+  screensaverSaveBtn = document.getElementById('screensaverSave');
+
+  if (screensaverPreviewVideo){
+    screensaverPreviewVideo.muted = true;
+    screensaverPreviewVideo.loop = true;
+    screensaverPreviewVideo.playsInline = true;
+    screensaverPreviewVideo.controls = false;
+  }
+
+  if (screensaverFile) screensaverFile.addEventListener('change', async () => {
+    handleScreensaverFileChange({ keepMessage: false });
+  });
+  if (screensaverPick) screensaverPick.onclick = () => screensaverFile?.click();
+  if (screensaverUpload) screensaverUpload.onclick = uploadScreensaver;
+  if (screensaverClear) screensaverClear.onclick = async () => {
+    screensaverState.path = null;
+    updateScreensaverStatus('Файл удалён. Не забудьте сохранить.');
+    updateScreensaverPreview();
+    if (screensaverFile) screensaverFile.value = '';
+    handleScreensaverFileChange({ keepMessage: true });
+    await saveScreensaver(true);
+  };
+  if (screensaverSaveBtn) screensaverSaveBtn.onclick = () => saveScreensaver(false);
+  if (screensaverTimeoutInput) screensaverTimeoutInput.addEventListener('input', () => {
+    screensaverState.timeout = Number.parseInt(screensaverTimeoutInput.value || '0', 10) || 0;
+    saveScreensaver(true);
+  });
+}
+
+async function loadThemeSection(){
+  try{
+    const cfg = await loadConfig();
+    const theme = (cfg && cfg.theme) || {};
+    if (themeBgColor) themeBgColor.value = theme.bg || '#f5f7fb';
+    themeState.bg = themeBgColor ? themeBgColor.value : '#f5f7fb';
+    themeState.bg_image_path = theme.bg_image_path || null;
+    updateThemePreview();
+    updateThemeStatus();
+    handleThemeFileChange({ keepMessage: true });
+    applyScreensaverConfig((cfg && cfg.screensaver) || {});
+  } catch(err){
+    console.error(err);
+    updateThemeStatus('Не удалось загрузить текущие настройки');
+  }
+}
+
+function initTheme(){
+  themeBgColor = document.getElementById('themeBgColor');
+  themeBgFile = document.getElementById('themeBgFile');
+  themeBgPick = document.getElementById('themeBgPick');
+  themeBgUpload = document.getElementById('themeBgUpload');
+  themeBgClear = document.getElementById('themeBgClear');
+  themeBgPreview = document.getElementById('themeBgPreview');
+  themeBgStatus = document.getElementById('themeBgStatus');
+  themeSaveBtn = document.getElementById('themeSave');
+
+  if (themeBgColor) themeBgColor.addEventListener('input', updateThemePreview);
+  if (themeBgFile) themeBgFile.addEventListener('change', () => handleThemeFileChange({ keepMessage: true }));
+  if (themeBgPick) themeBgPick.onclick = () => themeBgFile?.click();
+  if (themeBgUpload) themeBgUpload.onclick = uploadThemeBackground;
+  if (themeBgClear) themeBgClear.onclick = () => {
+    themeState.bg_image_path = null;
+    updateThemePreview();
+    updateThemeStatus('Фон удалён. Не забудьте сохра#dить.');
+    if (themeBgFile) themeBgFile.value = '';
+    handleThemeFileChange({ keepMessage: true });
+  };
+  if (themeSaveBtn) themeSaveBtn.onclick = saveTheme;
+
+  initScreensaver();
+  handleThemeFileChange({ keepMessage: true });
+  updateThemePreview();
+}
 
 // ========================= Pages (list + modal) =========================
 let pageModal, pageTitle, pageIsHome, pageSave, pageCancel, pageClose;
