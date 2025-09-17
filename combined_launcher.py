@@ -91,7 +91,7 @@ class BackendServer:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 8000,
+        port: int = 9000,
         log_level: str = "info",
         startup_timeout: float = 20.0,
     ) -> None:
@@ -242,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
 
     server = BackendServer(
         host=os.environ.get("KIOSK_BACKEND_HOST", "127.0.0.1"),
-        port=int(os.environ.get("KIOSK_BACKEND_PORT", "8000")),
+        port=int(os.environ.get("KIOSK_BACKEND_PORT", "9000")),
     )
 
     try:

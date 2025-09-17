@@ -147,13 +147,13 @@ from kiosk_app.ui.styles import button_stylesheet
 
 def test_resolve_url_or_path_for_media():
     path = "/media/sample.png"
-    result = resolve_url_or_path(path, "http://localhost:8000")
-    assert result == "http://localhost:8000/media/sample.png"
+    result = resolve_url_or_path(path, "http://localhost:9000")
+    assert result == "http://localhost:9000/media/sample.png"
 
 
 def test_resolve_url_or_path_for_non_media():
     path = "local/file.png"
-    result = resolve_url_or_path(path, "http://localhost:8000")
+    result = resolve_url_or_path(path, "http://localhost:9000")
     assert result == path
 
 

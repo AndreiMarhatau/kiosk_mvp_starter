@@ -39,7 +39,7 @@ cd "${APP_DIR}"
 
 APP_MODULE="${APP_MODULE:-app.main:app}"
 HOST="${HOST:-0.0.0.0}"
-PORT="${PORT:-8000}"
+PORT="${PORT:-9000}"
 ENABLE_RELOAD="${ENABLE_RELOAD:-1}"
 
 ARGS=("${PYTHON_EXEC}" "-m" "uvicorn" "${APP_MODULE}" "--host" "${HOST}" "--port" "${PORT}")
