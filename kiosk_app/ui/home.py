@@ -59,8 +59,10 @@ class DropList(QWidget):
     ) -> None:
         super().__init__(parent)
         self.theme = theme
-        self.items = items or []
+        self.items = list(items or [])
         self.on_pick = on_pick
+        self._buttons: List[QPushButton] = []
+        self._layout: QVBoxLayout | None = None
 
         try:
             self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
@@ -77,11 +79,39 @@ class DropList(QWidget):
         wrap.setContentsMargins(0, 0, 0, 0)
         wrap.setSpacing(0)
         self.setStyleSheet("background: transparent;")
+        self._layout = wrap
+        self._rebuild_buttons()
+
+    def set_items(self, items: List[dict] | None) -> None:
+        self.items = list(items or [])
+        self._rebuild_buttons()
+
+    def _select(self, slug: str) -> None:
+        self.hide()
+        if self.on_pick:
+            self.on_pick(slug)
+
+    def button_count(self) -> int:
+        return len(self._buttons)
+
+    def _rebuild_buttons(self) -> None:
+        if self._layout is None:
+            return
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            widget = item.widget() if item else None
+            if widget is not None:
+                try:
+                    widget.setParent(None)
+                    widget.deleteLater()
+                except Exception:
+                    pass
+        self._buttons.clear()
 
         for item in self.items:
             title = item.get("title", "")
             slug = item.get("target_slug", "")
-            bg = item.get("bg_color") or theme["primary"]
+            bg = item.get("bg_color") or self.theme["primary"]
             fg = item.get("text_color") or "#ffffff"
 
             btn = QPushButton(title)
@@ -89,21 +119,23 @@ class DropList(QWidget):
             btn.setStyleSheet(
                 button_stylesheet(bg, fg=fg, radius=10, pad_v=14, pad_h=16, fs=18)
             )
-            btn.setMinimumWidth(260)
             try:
-                btn.setMinimumHeight(max(44, theme["tile_h"] - 48))
+                btn.setMinimumWidth(260)
+            except Exception:
+                if hasattr(btn, "setMinimumSize"):
+                    try:
+                        btn.setMinimumSize(260, 44)
+                    except Exception:
+                        pass
+            try:
+                btn.setMinimumHeight(max(44, self.theme["tile_h"] - 48))
             except Exception:
                 btn.setMinimumHeight(44)
 
-            if self.on_pick:
-                btn.clicked.connect(lambda _, slug=slug: self._select(slug))
+            btn.clicked.connect(lambda _=False, slug=slug: self._select(slug))
 
-            wrap.addWidget(btn)
-
-    def _select(self, slug: str) -> None:
-        self.hide()
-        if self.on_pick:
-            self.on_pick(slug)
+            self._layout.addWidget(btn)
+            self._buttons.append(btn)
 
 
 class GroupTile(QPushButton):
@@ -143,18 +175,26 @@ class GroupTile(QPushButton):
 
         add_shadow(self, blur=16, y=3)
         self.clicked.connect(self._show_list)
+        self._popup: DropList | None = None
 
     def _show_list(self) -> None:
-        popup = DropList(self.theme, self.items, self.on_pick, parent=self)
+        popup = self._ensure_popup()
         try:
             popup.setFixedWidth(max(self.width(), 260))
         except Exception:
             pass
-        popup.adjustSize()
+        try:
+            popup.adjustSize()
+        except Exception:
+            pass
 
-        pos = self.mapToGlobal(self.rect().bottomLeft())
-        x = pos.x()
-        y = pos.y() + 6
+        try:
+            pos = self.mapToGlobal(self.rect().bottomLeft())
+            x = pos.x()
+            y = pos.y() + 6
+        except Exception:
+            x = 0
+            y = 0
 
         screen_geom = None
         try:
@@ -179,6 +219,15 @@ class GroupTile(QPushButton):
 
         popup.move(x, y)
         popup.show()
+
+    def _ensure_popup(self) -> DropList:
+        if self._popup is None:
+            self._popup = DropList(self.theme, self.items, self.on_pick, parent=self)
+        else:
+            self._popup.theme = self.theme
+            self._popup.on_pick = self.on_pick
+            self._popup.set_items(self.items)
+        return self._popup
 
 
 class HomePage(QWidget):

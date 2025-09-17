@@ -122,6 +122,10 @@ class App(QWidget):
         self._current_route = "home" if is_home else slug
         self._apply_home_background(is_home)
         if is_home:
+            try:
+                self.page.clear()
+            except Exception:
+                pass
             self.stack.setCurrentIndex(0)
             self.load_home()
             return
@@ -139,7 +143,8 @@ class App(QWidget):
             ])
             self.stack.setCurrentIndex(1)
 
-    def load_model(self) -> None:
+    def load_model(self, *, restore_route: Optional[str] = None) -> None:
+        target_route = restore_route or self._current_route or "home"
         cfg = self.backend.fetch_config()
         theme_payload = cfg.get("theme") if isinstance(cfg, dict) else {}
         self.theme = merge_theme(theme_payload)
@@ -175,6 +180,11 @@ class App(QWidget):
         self.root_layout.addWidget(self.footer)
 
         # Stack
+        try:
+            if getattr(self, "page", None):
+                self.page.clear()
+        except Exception:
+            pass
         self.stack.deleteLater()
         self.stack = QStackedWidget()
         self.root_layout.insertWidget(1, self.stack, 1)
@@ -187,10 +197,15 @@ class App(QWidget):
         self.stack.addWidget(self.admin)
 
         self.apply_global_styles()
-        self._current_route = "home"
-        self._apply_home_background(True)
         self._update_screensaver_config(cfg.get("screensaver") or {})
-        self.load_home()
+
+        if target_route == "home":
+            self._current_route = "home"
+            self._apply_home_background(True)
+            self.load_home()
+            self.stack.setCurrentIndex(0)
+        else:
+            self.route(target_route)
 
     def _poll_config_changes(self) -> None:
         cfg = self.backend.fetch_config()
@@ -276,7 +291,15 @@ class App(QWidget):
         menu.addAction(act_full)
 
         act_reload = QAction("Обновить", self)
-        act_reload.triggered.connect(self.load_model)
+
+        def _reload() -> None:
+            try:
+                current = getattr(self, "_current_route", "home") or "home"
+            except Exception:
+                current = "home"
+            self.load_model(restore_route=current)
+
+        act_reload.triggered.connect(_reload)
         menu.addAction(act_reload)
 
         menu.exec(global_pos)
