@@ -9,13 +9,19 @@ class ThemeOut(BaseModel):
     bg: str
     text: str
     logo_path: Optional[str] = None
+    bg_image_path: Optional[str] = None
     class Config: from_attributes = True
+
+class ScreensaverOut(BaseModel):
+    path: Optional[str] = None
+    timeout: int = 0
 
 class ConfigOut(BaseModel):
     org_name: str
     footer_qr_text: str
     footer_clock_format: str
     theme: ThemeOut
+    screensaver: ScreensaverOut | None = None
     show_weather: bool | None = None
     weather_city: Optional[str] = None
 
@@ -25,6 +31,16 @@ class SettingsUpdate(BaseModel):
     kiosk_exit_password: Optional[str] = None  # plaintext from admin UI; backend will hash
     show_weather: Optional[bool] = None
     weather_city: Optional[str] = None
+
+class ThemeUpdate(BaseModel):
+    primary: Optional[str] = None
+    bg: Optional[str] = None
+    text: Optional[str] = None
+    bg_image_path: Optional[str] = None
+
+class ScreensaverUpdate(BaseModel):
+    path: Optional[str] = None
+    timeout: Optional[int] = None
 
 # -------- Buttons --------
 class ButtonBase(BaseModel):

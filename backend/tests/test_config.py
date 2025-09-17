@@ -7,6 +7,7 @@ def test_config_fields(client: TestClient):
     assert 'org_name' in j
     assert 'theme' in j
     assert 'footer_clock_format' in j
+    assert 'bg_image_path' in j['theme']
     # weather fields present
     assert 'show_weather' in j
     assert 'weather_city' in j

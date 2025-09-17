@@ -22,11 +22,11 @@ import asyncio
 from . import crud
 from . import models  # <— понадобится для reorder
 from .schemas import (
-    ConfigOut, ButtonOut, ButtonCreate,
+    ConfigOut, ThemeOut, ScreensaverOut, ButtonOut, ButtonCreate,
     PageOut, PageCreate, PageUpdate,
     BlockOut, BlockCreate, BlockUpdate,
     UserCreate, UserOut,
-    SettingsUpdate,
+    SettingsUpdate, ThemeUpdate, ScreensaverUpdate,
     ButtonGroupCreate, ButtonGroupUpdate, ButtonGroupOut,
 )
 from .crud import get_user_by_username, verify_password, ensure_admin_user
@@ -129,6 +129,10 @@ def require_user(request: Request, db=Depends(get_db)):
 # ==============================
 @app.on_event("startup")
 def _startup():
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception:
+        pass
     db = SessionLocal()
     try:
         crud.ensure_button_groups_schema(db)
@@ -266,15 +270,16 @@ def get_config(db=Depends(get_db)):
         crud.upsert_sample_content(db)
     except Exception:
         pass
-    return {
+    payload = {
         "org_name": s.org_name,
         "footer_qr_text": s.footer_qr_text,
         "footer_clock_format": s.footer_clock_format,
         "theme": s.theme,
-        # extra fields tolerated by clients
+        "screensaver": {"path": getattr(s, 'screensaver_path', None), "timeout": int(getattr(s, 'screensaver_timeout', 0) or 0)},
         "show_weather": bool(getattr(s, 'show_weather', False)),
         "weather_city": getattr(s, 'weather_city', None),
     }
+    return payload
 
 
 @app.get("/home/buttons", response_model=List[ButtonOut])
@@ -307,6 +312,36 @@ def get_page(slug: str, db=Depends(get_db)):
         "id": p.id, "slug": p.slug, "title": p.title,
         "is_home": p.is_home, "blocks": blocks
     }
+
+# ---- Reorder Blocks payload (defined before endpoint for Pydantic) ----
+class BlockOrder(BaseModel):
+    id: int
+    order_index: int
+
+class BlockReorderPayload(BaseModel):
+    items: List[BlockOrder]
+
+
+@app.put("/admin/pages/{page_id}/blocks/reorder")
+def reorder_blocks(page_id: int, payload: BlockReorderPayload, db=Depends(get_db), user=Depends(require_user)):
+    # Update order_index for provided blocks limited to this page
+    # Build a map for fast lookup
+    ids = [it.id for it in payload.items]
+    blocks = db.query(models.Block).filter(models.Block.page_id == page_id, models.Block.id.in_(ids)).all()
+    by_id = {b.id: b for b in blocks}
+    for it in payload.items:
+        b = by_id.get(it.id)
+        if b:
+            b.order_index = int(it.order_index)
+    db.commit()
+    # Publish SSE to refresh kiosk page
+    try:
+        page = db.get(models.Page, page_id)
+        slug = page.slug if page else None
+    except Exception:
+        slug = None
+    _publish_event({"type": "page_updated", "page_id": page_id, "slug": slug})
+    return {"ok": True}
 
 
 # ==============================
@@ -547,20 +582,6 @@ def delete_button_group(group_id: int, db=Depends(get_db), user=Depends(require_
 # Settings & Config
 # ==============================
 
-@app.get("/config")
-def get_config(db=Depends(get_db)):
-    s = crud.get_settings(db)
-    return {
-        "org_name": s.org_name,
-        "footer_qr_text": s.footer_qr_text,
-        "footer_clock_format": s.footer_clock_format,
-        "theme": s.theme,
-        "exit_password_set": bool(s.exit_password_hash or ""),
-        "show_weather": bool(getattr(s, 'show_weather', False)),
-        "weather_city": getattr(s, 'weather_city', None),
-    }
-
-
 @app.put("/admin/settings")
 def update_settings(payload: SettingsUpdate, db=Depends(get_db), user=Depends(require_user)):
     s = crud.get_settings(db)
@@ -592,6 +613,54 @@ def update_settings(payload: SettingsUpdate, db=Depends(get_db), user=Depends(re
         pass
     db.commit(); db.refresh(s)
     return {"ok": True}
+
+
+@app.put("/admin/theme", response_model=ThemeOut)
+def update_theme(payload: ThemeUpdate, db=Depends(get_db), user=Depends(require_user)):
+    s = crud.get_settings(db)
+    if not s.theme:
+        s.theme = models.Theme()
+        db.add(s.theme); db.flush()
+    theme = s.theme
+    data = payload.model_dump(exclude_unset=True)
+    for field in ("primary", "bg", "text"):
+        if field in data and data[field] is not None:
+            setattr(theme, field, data[field])
+    if "bg_image_path" in data:
+        theme.bg_image_path = (data.get("bg_image_path") or None)
+    db.commit(); db.refresh(theme)
+    try:
+        _publish_event({"type": "config_updated"})
+    except Exception:
+        pass
+    return theme
+
+
+@app.get("/admin/screensaver", response_model=ScreensaverOut)
+def get_screensaver(db=Depends(get_db), user=Depends(require_user)):
+    s = crud.get_settings(db)
+    return {"path": getattr(s, 'screensaver_path', None), "timeout": int(getattr(s, 'screensaver_timeout', 0) or 0)}
+
+@app.put("/admin/screensaver", response_model=ScreensaverOut)
+def update_screensaver(payload: ScreensaverUpdate, db=Depends(get_db), user=Depends(require_user)):
+    s = crud.get_settings(db)
+    data = payload.model_dump(exclude_unset=True)
+    if "path" in data:
+        s.screensaver_path = (data.get("path") or None)
+    if "timeout" in data:
+        try:
+            timeout_val = int(data.get("timeout") or 0)
+        except Exception:
+            timeout_val = 0
+        if timeout_val < 0:
+            timeout_val = 0
+        s.screensaver_timeout = timeout_val
+    db.commit(); db.refresh(s)
+    try:
+        _publish_event({"type": "config_updated"})
+    except Exception:
+        pass
+    return {"path": s.screensaver_path, "timeout": int(getattr(s, 'screensaver_timeout', 0) or 0)}
 
 
 class ExitCheck(BaseModel):
@@ -636,3 +705,28 @@ def admin_set_exit_password(payload: KioskPwdSet, db=Depends(get_db), user=Depen
 def admin_get_exit_password_status(db=Depends(get_db), user=Depends(require_user)):
     s = crud.get_settings(db)
     return {"exit_password_set": bool(s.exit_password_hash)}
+# ---- Startup: ensure DB structures ----
+@app.on_event("startup")
+def _startup():
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception:
+        pass
+    try:
+        with SessionLocal() as db:
+            crud.ensure_settings_columns(db)
+            try:
+                crud.ensure_theme_columns(db)
+            except Exception:
+                pass
+            try:
+                crud.ensure_button_groups_schema(db)
+            except Exception:
+                pass
+            try:
+                crud.ensure_block_order_column(db)
+            except Exception:
+                pass
+            ensure_admin_user(db)
+    except Exception:
+        pass

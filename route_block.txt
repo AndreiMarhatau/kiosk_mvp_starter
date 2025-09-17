@@ -1,0 +1,17 @@
+    def route(self, slug):
+        self._handle_user_activity()
+        is_home = (slug == "home")
+        self._current_route = 'home' if is_home else slug
+        self._apply_home_background(is_home)
+        if is_home:
+            self.stack.setCurrentIndex(0)
+            self.load_home()
+            return
+        try:
+            data = requests.get(f"{API}/pages/{slug}", timeout=7).json()
+            self.page.render_blocks(data.get("blocks", []))
+            self.stack.setCurrentIndex(1)
+        except Exception as e:
+            self.page.render_blocks([{"kind":"text","content":{"html":f"<p>������ �������� ��������: {e}</p>"}}])
+            self.stack.setCurrentIndex(1)
+

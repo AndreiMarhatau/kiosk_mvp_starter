@@ -16,19 +16,19 @@ else:  # pragma: no cover
 def _configure_qt_logging() -> None:
     try:
         from PySide6.QtCore import qInstallMessageHandler
+    except Exception:  # pragma: no cover - Qt install unavailable
+        return
 
-        previous_handler = None
+    previous_handler = None
 
-        def _qt_msg_handler(mode, context, message):
-            nonlocal previous_handler
-            if isinstance(message, str) and "AVStream duration -9223372036854775808 is invalid" in message:
-                return
-            if previous_handler:
-                previous_handler(mode, context, message)
+    def _qt_msg_handler(mode, context, message):
+        nonlocal previous_handler
+        if isinstance(message, str) and "AVStream duration -9223372036854775808 is invalid" in message:
+            return
+        if previous_handler:
+            previous_handler(mode, context, message)
 
-        previous_handler = qInstallMessageHandler(_qt_msg_handler)
-    except Exception:
-        pass
+    previous_handler = qInstallMessageHandler(_qt_msg_handler)
 
 
 def main() -> int:

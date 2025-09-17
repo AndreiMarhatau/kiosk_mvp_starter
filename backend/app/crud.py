@@ -159,6 +159,20 @@ def ensure_settings_columns(db: Session):
     if 'weather_city' not in names:
         db.execute(text("ALTER TABLE settings ADD COLUMN weather_city VARCHAR(120)"))
         db.commit()
+    if 'screensaver_path' not in names:
+        db.execute(text("ALTER TABLE settings ADD COLUMN screensaver_path VARCHAR(255)"))
+        db.commit()
+    if 'screensaver_timeout' not in names:
+        db.execute(text("ALTER TABLE settings ADD COLUMN screensaver_timeout INTEGER DEFAULT 0"))
+        db.commit()
+
+
+def ensure_theme_columns(db: Session):
+    cols = db.execute(text("PRAGMA table_info(themes)")).fetchall()
+    names = {c[1] for c in cols}
+    if 'bg_image_path' not in names:
+        db.execute(text("ALTER TABLE themes ADD COLUMN bg_image_path VARCHAR(255)"))
+        db.commit()
 
 def list_pages(db: Session):
     return db.query(models.Page).all()
@@ -167,7 +181,12 @@ def get_page_by_slug(db: Session, slug: str) -> models.Page | None:
     return db.query(models.Page).filter(models.Page.slug == slug).first()
 
 def get_page_blocks(db: Session, page_id: int):
-    return db.query(models.Block).filter(models.Block.page_id == page_id).all()
+    return (
+        db.query(models.Block)
+        .filter(models.Block.page_id == page_id)
+        .order_by(models.Block.order_index, models.Block.id)
+        .all()
+    )
 
 def create_button(db: Session, data: dict) -> models.Button:
     btn = models.Button(**data)
@@ -197,7 +216,14 @@ def update_page(db: Session, slug: str, data: dict) -> models.Page | None:
 
 # ---- Blocks ----
 def create_block(db: Session, page_id: int, kind: str, content: dict) -> models.Block:
-    blk = models.Block(page_id=page_id, kind=kind, content_json=json.dumps(content, ensure_ascii=False))
+    last = (
+        db.query(models.Block.order_index)
+        .filter(models.Block.page_id == page_id)
+        .order_by(models.Block.order_index.desc())
+        .first()
+    )
+    next_ord = (last[0] + 1) if last and last[0] is not None else 1
+    blk = models.Block(page_id=page_id, kind=kind, content_json=json.dumps(content, ensure_ascii=False), order_index=next_ord)
     db.add(blk); db.commit(); db.refresh(blk)
     return blk
 
@@ -236,3 +262,23 @@ def upsert_sample_content(db: Session):
     about = get_page_by_slug(db, "about")
     if about and not get_page_blocks(db, about.id):
         create_block(db, about.id, "text", {"html": "<h2>О нас</h2><p>Добро пожаловать!</p>"})
+
+def ensure_block_order_column(db: Session):
+    """Ensure blocks.order_index column exists (SQLite dev DBs) and backfill values.
+    Adds the column if missing and assigns sequential order per page based on id.
+    """
+    cols = db.execute(text("PRAGMA table_info(blocks)")).fetchall()
+    names = {c[1] for c in cols}
+    if 'order_index' not in names:
+        db.execute(text("ALTER TABLE blocks ADD COLUMN order_index INTEGER DEFAULT 0"))
+        db.commit()
+        rows = db.execute(text("SELECT id, page_id FROM blocks ORDER BY page_id, id")).fetchall()
+        cur_page = None
+        idx = 0
+        for rid, pid in rows:
+            if pid != cur_page:
+                cur_page = pid
+                idx = 1
+            db.execute(text("UPDATE blocks SET order_index=:oi WHERE id=:id"), {"oi": idx, "id": rid})
+            idx += 1
+        db.commit()
