@@ -1,0 +1,35 @@
+# Python bytecode and cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+*/.venv/
+*/venv/
+*/env/
+
+# Packaging artifacts
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Test and coverage outputs
+.pytest_cache/
+.coverage*
+htmlcov/
+
+# Tooling and IDE metadata
+.idea/
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+
+# Local environment overrides
+.env
+.env.*

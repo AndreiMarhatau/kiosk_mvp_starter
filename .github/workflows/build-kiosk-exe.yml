@@ -1,0 +1,36 @@
+name: Build kiosk executable
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt -r kiosk_app/requirements.txt pyinstaller
+
+      - name: Validate backend start-up
+        run: python combined_launcher.py --check-backend
+
+      - name: Build Windows executable
+        run: python scripts/build_executable.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiosk_app_executable
+          path: dist/kiosk_app.exe
