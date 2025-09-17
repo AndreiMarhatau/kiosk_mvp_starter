@@ -17,7 +17,7 @@ DEFAULT_CONFIG: Dict[str, object] = {
 
 @dataclass(slots=True)
 class BackendAPI:
-    base_url: str = "http://127.0.0.1:8000"
+    base_url: str = "http://127.0.0.1:9000"
 
     def __post_init__(self) -> None:
         self.base_url = self.base_url.rstrip("/")

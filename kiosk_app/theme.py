@@ -19,17 +19,24 @@ THEME_DEFAULT: Dict[str, object] = {
     "gap_v": 2,
     "tile_min_w": 320,
     "tile_h": 80,
+    "bg_image_path": None,
+    "bg_image_local": None,
 }
 
 
 def merge_theme(api_theme: dict | None) -> Dict[str, object]:
     """Merge API-provided theme overrides with the defaults."""
-    if not api_theme:
-        return THEME_DEFAULT.copy()
     merged = THEME_DEFAULT.copy()
+    if not api_theme:
+        return merged
+
     for key in ("bg", "text", "primary"):
-        if api_theme.get(key):
-            merged[key] = api_theme[key]
+        value = api_theme.get(key)
+        if value:
+            merged[key] = value
+
+    merged["bg_image_path"] = api_theme.get("bg_image_path") or None
+    merged["bg_image_local"] = None
     return merged
 
 
@@ -40,3 +47,23 @@ def darker(hex_color: str, factor: float = 0.9) -> str:
     green = max(0, min(255, int(color.green() * factor)))
     blue = max(0, min(255, int(color.blue() * factor)))
     return QColor(red, green, blue).name()
+
+
+def build_background_qss(theme: Dict[str, object], *, include_image: bool = True) -> str:
+    """Compose a background stylesheet string for widgets based on the theme."""
+
+    color = theme.get("bg") or "#f5f7fb"
+    parts = [f"background-color: {color};"]
+    if include_image:
+        path = (theme.get("bg_image_local") or theme.get("bg_image_path") or "")
+        if path:
+            url = str(path).replace("\\", "/")
+            parts.append(
+                "background-image: url({}); background-repeat: no-repeat; "
+                "background-position: center center; background-size: cover;".format(url)
+            )
+        else:
+            parts.append("background-image: none;")
+    else:
+        parts.append("background-image: none;")
+    return " ".join(parts)
